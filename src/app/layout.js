@@ -1,4 +1,5 @@
 import { GoogleAnalytics } from "@next/third-parties/google";
+import Script from "next/script";
 import "material-symbols/outlined.css";
 import "./globals.css";
 import { ThemeProvider } from "@/shared/components/ThemeProvider";
@@ -34,12 +35,16 @@ export default function RootLayout({ children }) {
         {/* Apply persisted theme before first paint so a reload does not flash the
             default (light) theme before the client store hydrates. Mirrors the
             zustand-persist "theme" key and the `dark` class applyTheme() sets. */}
-        <script
+        <Script
+          id="theme-init"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var s=localStorage.getItem('theme');var t=s?(JSON.parse(s).state||{}).theme:'system';t=t||'system';var m=window.matchMedia('(prefers-color-scheme: dark)').matches;if(t==='dark'||(t==='system'&&m)){document.documentElement.classList.add('dark')}}catch(e){}})();`,
           }}
         />
-        <script
+        <Script
+          id="fonts-init"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `var d=document,r=d.documentElement,f=function(){r.classList.add('fonts-loaded')};if(d.fonts&&d.fonts.load){d.fonts.load('24px "Material Symbols Outlined"').then(f).catch(f);setTimeout(f,3000)}else{f()}`,
           }}
