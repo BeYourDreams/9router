@@ -504,7 +504,8 @@ export class OpenCodeExecutor extends BaseExecutor {
   // request still goes out on native fetch instead of erroring here.
   async execute(args) {
     const { model, stream, credentials, log } = args;
-    let proxyOptions = args.proxyOptions || null;
+    // ponytail: free tier is IP-sensitive; shared proxies burn quota → force direct
+    let proxyOptions = null;
 
     let targetUrl;
     try {
