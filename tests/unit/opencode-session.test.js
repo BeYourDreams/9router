@@ -249,24 +249,30 @@ describe("OpenCode Stable Session Reuse (429 follow-up)", () => {
     return makeCredentials({ connectionId: undefined, rawHeaders: { authorization: `Bearer ${auth}` } });
   }
 
-  it("reuses one stable upstream session instead of minting a new one per request", () => {
+  it("mints a fresh upstream session per fresh request but reuses it mid-conversation", () => {
     const executor = getExecutor("opencode");
-    const body = { messages: [{ role: "user", content: "hello" }] };
-    const first = executor.prepareRequestCredentials({
+    const fresh = { messages: [{ role: "user", content: "hello" }] };
+    const continuation = {
+      messages: [
+        { role: "user", content: "hello" },
+        { role: "assistant", content: "a long enough assistant reply to anchor the conversation hash" },
+        { role: "user", content: "again" },
+      ],
+    };
+    const call = (body) => executor.prepareRequestCredentials({
       body,
       credentials: anonymousCredentials("stable-key-1"),
       providerSessionId: null,
       clientTool: "claude",
-    });
-    const second = executor.prepareRequestCredentials({
-      body,
-      credentials: anonymousCredentials("stable-key-1"),
-      providerSessionId: null,
-      clientTool: "claude",
-    });
+    })._opencodeSession;
 
-    expect(first._opencodeSession).toMatch(OPENCODE_SESSION_RE);
-    expect(second._opencodeSession).toBe(first._opencodeSession);
+    const first = call(fresh);
+    const second = call(fresh);
+
+    expect(first).toMatch(OPENCODE_SESSION_RE);
+    expect(second).not.toBe(first);
+    expect(call(continuation)).toBe(call(continuation));
+    expect(call(continuation)).not.toBe(second);
   });
 
   it("isolates stable sessions by downstream identity", () => {
@@ -298,8 +304,8 @@ describe("OpenCode Stable Session Reuse (429 follow-up)", () => {
     const second = call("8a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d1792940000001");
 
     expect(first).toMatch(OPENCODE_SESSION_RE);
-    expect(second).toBe(first);
-    expect(first).toBe(stableSessionId(credentials));
+    expect(second).toMatch(OPENCODE_SESSION_RE);
+    expect(second).not.toBe(first);
   });
 
   it("keeps a synthetic-seeded multi-turn conversation on one current-dated session", () => {

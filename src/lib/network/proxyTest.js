@@ -42,7 +42,11 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
 
   try {
     try {
-      dispatcher = new ProxyAgent({ uri: normalizedProxyUrl });
+      dispatcher = new ProxyAgent({
+        uri: normalizedProxyUrl,
+        // Avoid hanging on slow CONNECT/TLS
+        connect: { timeout: normalizedTimeoutMs },
+      });
     } catch (err) {
       return {
         ok: false,
@@ -53,7 +57,16 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
 
     const controller = new AbortController();
     const startedAt = Date.now();
-    const timer = setTimeout(() => controller.abort(), normalizedTimeoutMs);
+    const timeoutError = new Error("Proxy test timed out");
+    timeoutError.name = "ProxyTestTimeoutError";
+    const timer = setTimeout(() => {
+      controller.abort(timeoutError);
+      try {
+        dispatcher?.destroy?.();
+      } catch {
+        // ignore
+      }
+    }, normalizedTimeoutMs);
 
     try {
       const res = await undiciFetch(normalizedTestUrl, {
@@ -74,7 +87,7 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
       };
     } catch (err) {
       const message =
-        err?.name === "AbortError"
+        err?.name === "AbortError" || err?.name === "ProxyTestTimeoutError"
           ? "Proxy test timed out"
           : getErrorMessage(err);
       return { ok: false, status: 500, error: message };
@@ -83,6 +96,7 @@ export async function testProxyUrl({ proxyUrl, testUrl, timeoutMs } = {}) {
     }
   } finally {
     try {
+      await dispatcher?.destroy?.();
       await dispatcher?.close?.();
     } catch {
       // ignore

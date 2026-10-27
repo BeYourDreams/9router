@@ -7,7 +7,7 @@ export default {
   async fetch(request, env, ctx) {
     const target = request.headers.get("x-relay-target");
     const relayPath = request.headers.get("x-relay-path") || "/";
-    
+
     if (!target) {
       return new Response(JSON.stringify({ error: "Missing x-relay-target header" }), {
         status: 400,
@@ -15,29 +15,31 @@ export default {
       });
     }
 
-    const targetUrl = target.replace(/\\/$/, "") + relayPath;
-    const newRequestInit = {
+    const base = target.replace(//$/, "");
+    const targetUrl = relayPath.startsWith("http") ? relayPath : base + relayPath;
+
+    const headers = new Headers(request.headers);
+    headers.delete("x-relay-target");
+    headers.delete("x-relay-path");
+    headers.delete("host");
+
+    const init = {
       method: request.method,
-      headers: new Headers(request.headers),
+      headers,
     };
 
     if (request.method !== "GET" && request.method !== "HEAD") {
-      newRequestInit.body = request.body;
-      newRequestInit.duplex = "half";
+      init.body = request.body;
     }
 
-    newRequestInit.headers.delete("x-relay-target");
-    newRequestInit.headers.delete("x-relay-path");
-    newRequestInit.headers.delete("host");
-
     try {
-      const response = await fetch(targetUrl, newRequestInit);
+      const response = await fetch(targetUrl, init);
       return new Response(response.body, {
         status: response.status,
         headers: response.headers,
       });
     } catch (error) {
-      return new Response(JSON.stringify({ error: error.message }), {
+      return new Response(JSON.stringify({ error: error.message || String(error) }), {
         status: 502,
         headers: { "content-type": "application/json" },
       });

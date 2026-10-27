@@ -17,6 +17,50 @@ export default async function handler(req) {
       headers: { "content-type": "application/json" },
     });
   }
+  try {
+    const base = target.replace(//$/, "");
+    const targetUrl = relayPath.startsWith("http") ? relayPath : base + relayPath;
+    const headers = new Headers();
+    for (const [k, v] of req.headers.entries()) {
+      const key = k.toLowerCase();
+      if (key === "x-relay-target" || key === "x-relay-path" || key === "host") continue;
+      headers.set(k, v);
+    }
+    if (!headers.has("user-agent")) headers.set("user-agent", "9Router-Relay");
+    const init = { method: req.method, headers, redirect: "follow" };
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      init.body = req.body;
+      init.duplex = "half";
+    }
+    const response = await fetch(targetUrl, init);
+    const resHeaders = new Headers(response.headers);
+    resHeaders.set("x-relay-status", String(response.status));
+    return new Response(response.body, { status: response.status, headers: resHeaders });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: error.message || String(error) }), {
+      status: 502,
+      headers: { "content-type": "application/json" },
+    });
+  }
+}port { NextResponse } from "next/server";
+import { createProxyPool } from "@/models";
+
+const VERCEL_API = "https://api.vercel.com";
+
+// Relay function source code deployed to Vercel
+// Forwards requests to target URL specified in x-relay-target header
+const RELAY_FUNCTION_CODE = `
+export const config = { runtime: "edge" };
+
+export default async function handler(req) {
+  const target = req.headers.get("x-relay-target");
+  const relayPath = req.headers.get("x-relay-path") || "/";
+  if (!target) {
+    return new Response(JSON.stringify({ error: "Missing x-relay-target header" }), {
+      status: 400,
+      headers: { "content-type": "application/json" },
+    });
+  }
 
   const targetUrl = target.replace(/\\/$/, "") + relayPath;
 

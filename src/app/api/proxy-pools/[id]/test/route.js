@@ -6,27 +6,36 @@ import { fetch as undiciFetch } from "undici";
 async function testVercelRelay(relayUrl, timeoutMs = 10000) {
   const controller = new AbortController();
   const startedAt = Date.now();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(new Error("Relay test timed out")), timeoutMs);
   try {
     const res = await undiciFetch(relayUrl, {
       method: "GET",
       headers: {
         "x-relay-target": "https://httpbin.org",
         "x-relay-path": "/get",
+        "user-agent": "9Router-Test",
       },
       signal: controller.signal,
     });
+    const ok = res.ok;
+    let body = "";
+    try {
+      body = await res.text();
+    } catch {
+      // ignore
+    }
     return {
-      ok: res.ok,
+      ok,
       status: res.status,
       statusText: res.statusText,
       elapsedMs: Date.now() - startedAt,
+      error: ok ? undefined : (body.slice(0, 200) || `Relay test failed with status ${res.status}`),
     };
   } catch (err) {
     return {
       ok: false,
       status: 500,
-      error: err?.name === "AbortError" ? "Relay test timed out" : (err?.message || String(err)),
+      error: err?.name === "AbortError" || err?.message?.includes("timed out") ? "Relay test timed out" : (err?.message || String(err)),
     };
   } finally {
     clearTimeout(timer);

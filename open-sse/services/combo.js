@@ -2,7 +2,7 @@
  * Shared combo (model combo) handling with fallback support
  */
 
-import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
+import { checkFallbackError, formatRetryAfter, getUnavailableUntil } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { parseModel } from "./model.js";
@@ -15,7 +15,44 @@ import {
   orderModelsByChoice,
 } from "./systemoneRouter.js";
 
-// Peek a 2xx combo response for real content. Returns null for non-SSE responses (leave
+/**
+ * Per-model cooldown store for combo fallback.
+ * Key: `${comboName}:${modelStr}` -> Value: unavailableUntil (ISO timestamp)
+ */
+const comboModelCooldownStore = new Map();
+
+const DEFAULT_MODEL_COOLDOWN_MS = 60 * 1000; // 60 seconds default
+
+/**
+ * Check if a model is currently in cooldown for this combo.
+ */
+function isModelInCooldown(comboName, modelStr) {
+  const key = `${comboName}:${modelStr}`;
+  const until = comboModelCooldownStore.get(key);
+  if (!until) return false;
+  if (new Date(until).getTime() <= Date.now()) {
+    comboModelCooldownStore.delete(key);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Set a model's cooldown until timestamp.
+ */
+function setModelCooldown(comboName, modelStr, unavailableUntil) {
+  const key = `${comboName}:${modelStr}`;
+  comboModelCooldownStore.set(key, unavailableUntil);
+}
+
+/**
+ * Filter out models that are currently in cooldown.
+ */
+function filterModelsInCooldown(comboName, models) {
+  return models.filter((m) => !isModelInCooldown(comboName, m));
+}
+
+// Peek a 2xx combo response
 // them untouched). For SSE, returns { outcome: "content"|"empty", finishReason, response }
 // where `response` is a faithful replay of the original stream (head buffer + live reader).
 async function peekComboResponse(result, log) {
@@ -462,6 +499,30 @@ export async function handleComboChat({
       rotatedModels = reordered;
     }
   }
+
+  // Filter out models currently in cooldown (rate-limited)
+  const beforeCooldownFilter = rotatedModels.length;
+  rotatedModels = filterModelsInCooldown(comboName, rotatedModels);
+  if (rotatedModels.length !== beforeCooldownFilter) {
+    log.info("COMBO", `Filtered ${beforeCooldownFilter - rotatedModels.length} model(s) in cooldown: [${rotatedModels.join(", ")}]`);
+  }
+  if (rotatedModels.length === 0) {
+    log.warn("COMBO", `All models in cooldown, waiting for earliest to recover`);
+    // Find earliest cooldown expiry
+    let earliestUntil = null;
+    for (const modelStr of models) {
+      const key = `${comboName}:${modelStr}`;
+      const until = comboModelCooldownStore.get(key);
+      if (until && (!earliestUntil || new Date(until) < new Date(earliestUntil))) {
+        earliestUntil = until;
+      }
+    }
+    if (earliestUntil) {
+      const retryHuman = formatRetryAfter(earliestUntil);
+      return unavailableResponse(503, `All combo models in cooldown`, earliestUntil, retryHuman);
+    }
+    return unavailableResponse(503, `All combo models in cooldown`);
+  }
   
   let lastError = null;
   let earliestRetryAfter = null;
@@ -609,6 +670,15 @@ export async function handleComboChat({
       }
 
       // Fallback to next model
+      // Record model cooldown so future requests skip it until recovered
+      const cooldownMsFinal = retryAfter
+        ? new Date(retryAfter).getTime() - Date.now()
+        : (cooldownMs && cooldownMs > 0 ? cooldownMs : DEFAULT_MODEL_COOLDOWN_MS);
+      if (cooldownMsFinal > 0) {
+        const until = getUnavailableUntil(cooldownMsFinal);
+        setModelCooldown(comboName, modelStr, until);
+        log.info("COMBO", `Model ${modelStr} set cooldown until ${until} (${Math.round(cooldownMsFinal / 1000)}s)`);
+      }
       lastError = errorText || String(result.status);
       if (!lastStatus) lastStatus = result.status;
       log.warn("COMBO", `Model ${modelStr} failed, trying next`, { status: result.status });
@@ -617,6 +687,10 @@ export async function handleComboChat({
       if (comboStrategy === "smart" && sessionId && modelStr === activeStickyModel) {
         clearStickyComboSession(comboName, sessionId);
       }
+      // Set default cooldown on exception too
+      const until = getUnavailableUntil(DEFAULT_MODEL_COOLDOWN_MS);
+      setModelCooldown(comboName, modelStr, until);
+      log.info("COMBO", `Model ${modelStr} exception, set cooldown until ${until} (${Math.round(DEFAULT_MODEL_COOLDOWN_MS / 1000)}s)`);
       lastError = error.message || String(error);
       if (!lastStatus) lastStatus = 500;
       log.warn("COMBO", `Model ${modelStr} threw error, trying next`, { error: lastError });

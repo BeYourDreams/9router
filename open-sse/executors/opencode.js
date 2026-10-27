@@ -4,7 +4,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { getThinkingLevels } from "../providers/thinkingLevels.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
-import { resolveSessionId } from "../utils/sessionManager.js";
+import { resolveSessionId, resolveSessionIdentity } from "../utils/sessionManager.js";
 import { isMuseSparkModel } from "../providers/models/helpers.js";
 import { applyFingerprintTools, applyFingerprintSystemPrompt } from "../utils/opencodeFingerprint.js";
 import { opencodeTlsFetch } from "../services/opencodeTlsClient.js";
@@ -15,7 +15,6 @@ import {
   markEgressCooling,
   getEgressCooldown,
   hasActiveDirectCooldown,
-  hasAlternateEgresses,
   selectAlternateProxy,
   parseRetryAfterMs,
   syntheticRateLimitResponse,
@@ -220,23 +219,31 @@ function bodyHasSessionHints(body) {
     if (typeof body.prompt_cache_key === "string" && body.prompt_cache_key.trim()) return true;
     if (body.metadata && typeof body.metadata.user_id === "string" && body.metadata.user_id.trim()) return true;
     if (body.request && body.request.sessionId != null && String(body.request.sessionId) !== "") return true;
-    const arr = Array.isArray(body.messages)
+    return hasAssistantTurns(body);
+  } catch {
+    return false;
+  }
+}
+
+// A body with real assistant output is a continuation of an existing
+// conversation; a body with only user turns starts a new one.
+function hasAssistantTurns(body) {
+  try {
+    const arr = Array.isArray(body?.messages)
       ? body.messages
-      : Array.isArray(body.input)
+      : Array.isArray(body?.input)
         ? body.input
         : null;
-    if (arr) {
-      let assistantText = "";
-      for (const msg of arr) {
-        if (msg?.role === "assistant") {
-          const content = msg.content;
-          if (typeof content === "string") assistantText += content;
-          else if (Array.isArray(content)) {
-            for (const part of content) assistantText += part?.text || part?.output || "";
-          }
-          if (assistantText.length >= 50) return true;
-        }
+    if (!arr) return false;
+    let assistantText = "";
+    for (const msg of arr) {
+      if (msg?.role !== "assistant") continue;
+      const content = msg.content;
+      if (typeof content === "string") assistantText += content;
+      else if (Array.isArray(content)) {
+        for (const part of content) assistantText += part?.text || part?.output || "";
       }
+      if (assistantText.length >= 50) return true;
     }
     return false;
   } catch {
@@ -277,21 +284,44 @@ function resolveOpencodeSession(body, credentials, providerSessionId, clientTool
   const hinted = incoming || normalizeSession(seed);
   if (hinted) return translateSessionId(hinted, clientTool, egressId, sessionEpoch(credentials, egressId));
 
-  if (credentials?.connectionId || bodyHasSessionHints(body)) {
-    let viaManager = null;
-    try {
-      viaManager = resolveSessionId({
-        headers,
-        body,
-        connectionId: credentials?.connectionId,
-        scope: "opencode",
-      });
-    } catch {
-      viaManager = null;
+  // For no-auth free tier, the shared "noauth" connectionId would give every
+  // conversation the same upstream session (burns quota → 429). Only use the
+  // session manager when the client provides an explicit session hint.
+  const isNoAuth = credentials?.id === "noauth" || credentials?.accessToken === "public";
+  const hasClientHint = bodyHasSessionHints(body);
+
+  if (!isNoAuth || hasClientHint) {
+    if (credentials?.connectionId || hasClientHint) {
+      let viaManager = null;
+      try {
+        const identity = resolveSessionIdentity({
+          headers,
+          body,
+          connectionId: credentials?.connectionId,
+          scope: "opencode",
+        });
+        // If the session manager falls back to a per-connection session (ephemeral),
+        // and we're on no-auth, treat it as no-hint so we mint a fresh session.
+        if (isNoAuth && identity.ephemeral) {
+          viaManager = null;
+        } else {
+          viaManager = identity.sessionId;
+        }
+      } catch {
+        viaManager = null;
+      }
+      if (viaManager) return translateSessionId(viaManager, clientTool, egressId, sessionEpoch(credentials, egressId));
     }
-    if (viaManager) return translateSessionId(viaManager, clientTool, egressId, sessionEpoch(credentials, egressId));
   }
 
+  // No conversation hint means this is a new request, not a continuation.
+  // Upstream free quota is accounted per session, and the no-auth connection is
+  // shared by every downstream client, so one canonical session burns out fast
+  // and then 429s until the process restarts. Mint a fresh session per fresh
+  // conversation and keep it only while assistant turns show it is still in
+  // flight. Drop the cached entry instead of bumping the epoch so hinted
+  // conversations on the same scope keep their session.
+  if (!hasAssistantTurns(body)) stableOpencodeSessions.delete(sessionScopeKey(credentials, egressId));
   return stableSessionId(credentials, egressId);
 }
 
@@ -528,7 +558,9 @@ export class OpenCodeExecutor extends BaseExecutor {
     }
 
     const prepared = this.prepareRequestCredentials({ ...args, egressId: egress.id });
-    const retryBody = hasAlternateEgresses(proxyOptions) ? cloneRequestBody(args.body) : null;
+    // Snapshot before the first attempt: transformRequest mutates `args.body`, and
+    // a rotated-session retry must start from the untouched request.
+    const retryBody = cloneRequestBody(args.body);
 
     let result = await super.execute({ ...args, credentials: prepared, proxyOptions });
 
@@ -548,7 +580,10 @@ export class OpenCodeExecutor extends BaseExecutor {
     }
 
     const selection = selectAlternateProxy(proxyOptions, targetUrl, new Set([egress.id]));
-    const retrySameEgress = rotated && egress.kind === "direct";
+    // Free quota is accounted per session, so a fresh session earns one retry on
+    // any egress — not just direct. Only a native client session (not rotated)
+    // has nothing to retry with.
+    const retrySameEgress = rotated;
 
     if (!selection.alternate && !retrySameEgress) {
       const cooling = markEgressCooling(egress, retryAfterMs);
@@ -575,7 +610,7 @@ export class OpenCodeExecutor extends BaseExecutor {
     const retryProxyOptions = selection.alternate?.proxyOptions ?? proxyOptions;
     const retryCredentials = this.prepareRequestCredentials({
       ...args,
-      body: retryBody || args.body,
+      body: retryBody,
       egressId: retryEgress.id,
     });
 
@@ -586,7 +621,7 @@ export class OpenCodeExecutor extends BaseExecutor {
 
     const retryResult = await super.execute({
       ...args,
-      body: retryBody || args.body,
+      body: retryBody,
       credentials: retryCredentials,
       proxyOptions: retryProxyOptions,
     });
@@ -621,7 +656,9 @@ export class OpenCodeExecutor extends BaseExecutor {
     const downstreamUa = lower["user-agent"] || "";
     const isOpencodeDownstream = hasValidOpencodeVersion(downstreamUa);
 
-    const session = credentials?.[SESSION_FIELD] || this.prepareRequestCredentials({ credentials })[SESSION_FIELD];
+    // buildHeaders is called standalone (no body, no conversation hint).
+    // Use the stable identity session so repeated calls are consistent.
+    const session = credentials?.[SESSION_FIELD] || stableSessionId(credentials);
 
     // Mirrors the v2 CLI. Upstream needs x-opencode-session-id next to
     // x-opencode-session, and rejects any x-opencode-request (v1 only) with 403.

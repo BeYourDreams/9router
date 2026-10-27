@@ -15,6 +15,9 @@ export default function SegmentedControl({
     lg: "h-11 text-base",
   };
 
+  // ponytail: runtime i18n rewrites label text nodes in place, so a re-used
+  // (Next segment cache) tree legitimately differs from the server HTML.
+  // Upgrade path: translate() at render time instead of mutating the DOM.
   return (
     <div
       className={cn(
@@ -27,6 +30,7 @@ export default function SegmentedControl({
         <button
           key={option.value}
           onClick={() => onChange(option.value)}
+          suppressHydrationWarning
           className={cn(
             "shrink-0 px-4 rounded-[8px] font-medium transition-all",
             sizes[size],
