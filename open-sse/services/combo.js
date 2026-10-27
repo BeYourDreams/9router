@@ -147,6 +147,17 @@ export function reorderByCapabilities(models, required) {
  */
 const comboRotationState = new Map();
 
+/**
+ * Track last successful model per combo (for fallback strategy)
+ * Key: comboName -> Value: model string
+ * Enables sticky fallback: the next request starts at the model that last
+ * answered, then walks forward through the list, wrapping around, until one
+ * succeeds. Storing the name (not an index) keeps the pointer correct when the
+ * combo's member list or order is edited.
+ * @type {Map<string, string>}
+ */
+const comboFallbackIndex = new Map();
+
 // Trailing run of items after the last assistant/model turn = the current user
 // turn. It may span several messages (e.g. text + image split across blocks),
 // so we return all of them. History media (older turns) must not pin the combo
@@ -303,9 +314,11 @@ export function getRotatedModels(models, comboName, strategy, stickyLimit = 1) {
 export function resetComboRotation(comboName) {
   if (comboName) {
     comboRotationState.delete(comboName);
+    comboFallbackIndex.delete(comboName);
     clearStickyComboSession(comboName);
   } else {
     comboRotationState.clear();
+    comboFallbackIndex.clear();
     clearStickyComboSession();
   }
 }
@@ -488,6 +501,18 @@ export async function handleComboChat({
     rotatedModels = getRotatedModels(models, comboName, comboStrategy, comboStickyLimit);
   }
 
+  // Fallback strategy: start from last successful model (sticky fallback)
+  if (comboStrategy === "fallback" && comboName) {
+    const rememberedModel = comboFallbackIndex.get(comboName);
+    if (rememberedModel) {
+      const idx = rotatedModels.indexOf(rememberedModel);
+      if (idx > 0) {
+        rotatedModels = rotateModelsFromIndex(rotatedModels, idx);
+        log.info("COMBO", `fallback strategy: starting from remembered model ${rememberedModel} (index ${idx})`);
+      }
+    }
+  }
+
   // Auto-switch: float models that satisfy the request's required capabilities to the front.
   if (autoSwitch) {
     const required = detectRequiredCapabilities(body);
@@ -581,11 +606,19 @@ export async function handleComboChat({
           }
 
           log.info("COMBO", `Model ${modelStr} succeeded`);
+          // Update fallback index to remember this successful model
+          if (comboStrategy === "fallback" && comboName) {
+            comboFallbackIndex.set(comboName, modelStr);
+          }
           return result;
         }
 
         if (peeked.outcome === "content") {
           log.info("COMBO", `Model ${modelStr} succeeded${peeked.timedOut ? " (peek deadline; committed)" : ""}`);
+          // Update fallback index to remember this successful model
+          if (comboStrategy === "fallback" && comboName) {
+            comboFallbackIndex.set(comboName, modelStr);
+          }
           return peeked.response;
         }
 
@@ -596,6 +629,10 @@ export async function handleComboChat({
         const isLast = i === rotatedModels.length - 1;
         if (isNoRetryFinish(peeked.finishReason) || isLast) {
           log.warn("COMBO", `Model ${modelStr} returned empty (${reasonLabel}) — ${isNoRetryFinish(peeked.finishReason) ? "no-retry class" : "last candidate"}, returning as-is`);
+          // Update fallback index for last candidate success
+          if (comboStrategy === "fallback" && comboName) {
+            comboFallbackIndex.set(comboName, modelStr);
+          }
           return peeked.response;
         }
 
