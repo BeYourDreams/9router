@@ -538,6 +538,14 @@ export default function CoworkToolCard({
           onClose={() => setModelSelectOpen(false)}
           onSelect={handleAddModel}
           onDeselect={handleRemoveModel}
+          onSelectBatch={(items) => {
+            const vals = (items || []).map((m) => m?.value || m?.name || m).filter(Boolean);
+            setSelectedModels((prev) => [...new Set([...prev, ...vals])]);
+          }}
+          onDeselectBatch={(items) => {
+            const vals = new Set((items || []).map((m) => m?.value || m?.name || m).filter(Boolean));
+            setSelectedModels((prev) => prev.filter((m) => !vals.has(m)));
+          }}
           activeProviders={activeProviders}
           modelAliases={modelAliases}
           title="Select Cowork Model"

@@ -27,11 +27,25 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict 
   };
 
   const setAllow = (allow) => onChange({ restricted: true, allow });
+  const alreadyAllowed = (value) => access.allow.some((e) => e.toLowerCase() === value.toLowerCase());
   const add = (model) => {
     const value = model?.value;
-    if (value && !access.allow.some((e) => e.toLowerCase() === value.toLowerCase())) setAllow([...access.allow, value]);
+    if (value && !alreadyAllowed(value)) setAllow([...access.allow, value]);
   };
   const remove = (value) => setAllow(access.allow.filter((e) => e !== value));
+  // One onChange (= one request + one key list refresh) for bulk add/remove; the
+  // per-model handlers each read the same pre-click `access.allow`, so a loop would
+  // end up saving only the last picked model.
+  const addBatch = (items) => {
+    const values = (items || []).map((m) => m?.value).filter(Boolean);
+    const next = [...access.allow, ...values.filter((v) => !alreadyAllowed(v))];
+    if (next.length === access.allow.length) return;
+    setAllow(next);
+  };
+  const removeBatch = (items) => {
+    const values = new Set((items || []).map((m) => String(m?.value ?? "").toLowerCase()));
+    setAllow(access.allow.filter((e) => !values.has(e.toLowerCase())));
+  };
 
   return (
     <div className="mt-2" data-testid="key-access">
@@ -74,6 +88,8 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict 
           onClose={() => setPickerOpen(false)}
           onSelect={add}
           onDeselect={(model) => remove(access.allow.find((e) => e.toLowerCase() === String(model?.value).toLowerCase()))}
+          onSelectBatch={addBatch}
+          onDeselectBatch={removeBatch}
           activeProviders={activeProviders}
           modelAliases={modelAliases}
           title={`Allowed for "${apiKey.name}"`}

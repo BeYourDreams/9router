@@ -465,17 +465,25 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
             saveModels(selectedModelsRef.current);
           }}
           onSelect={(model) => {
-            if (!selectedModels.includes(model.value)) {
-              setSelectedModels([...selectedModels, model.value]);
-              if (!activeModel) setActiveModel(model.value);
-            }
+            setSelectedModels((prev) => (prev.includes(model.value) ? prev : [...prev, model.value]));
+            if (!activeModel) setActiveModel(model.value);
           }}
           onDeselect={(model) => {
-            const remaining = selectedModels.filter(m => m !== model.value);
+            const remaining = selectedModels.filter((m) => m !== model.value);
             setSelectedModels(remaining);
-            if (activeModel === model.value) {
-              setActiveModel(remaining[0] || "");
-            }
+            if (activeModel === model.value) setActiveModel(remaining[0] || "");
+          }}
+          // One write for bulk add/remove, and the first pick becomes the active model.
+          onSelectBatch={(items) => {
+            const vals = (items || []).map((m) => m?.value).filter(Boolean);
+            setSelectedModels((prev) => [...new Set([...prev, ...vals])]);
+            if (!activeModel && vals.length > 0) setActiveModel(vals[0]);
+          }}
+          onDeselectBatch={(items) => {
+            const vals = new Set((items || []).map((m) => m?.value).filter(Boolean));
+            const remaining = selectedModels.filter((m) => !vals.has(m));
+            setSelectedModels(remaining);
+            if (vals.has(activeModel)) setActiveModel(remaining[0] || "");
           }}
           selectedModel={null}
           activeProviders={activeProviders}

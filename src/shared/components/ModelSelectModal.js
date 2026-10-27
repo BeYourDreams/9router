@@ -22,11 +22,15 @@ const PROVIDER_ORDER = [
 // Providers that need no auth — always show in model selector
 const NO_AUTH_PROVIDER_IDS = Object.keys(FREE_PROVIDERS).filter(id => FREE_PROVIDERS[id].noAuth);
 
-// Providers with per-account live catalogs via /api/providers/[id]/models.
-// Static registry stays as fallback when live fetch fails or is empty.
-// zed added in #4244: its backend customResolver already returns live models
-// but the frontend omitted it, hiding Zed entirely from the Combo picker.
-const LIVE_CATALOG_PROVIDERS = ["cursor", "cline", "clinepass", "zed"];
+// Providers whose dashboard page renders the live per-account catalog instead of
+// the static registry (see providers/[id]/page.js `models`), so the picker must
+// mirror it. zed added in #4244: its backend customResolver already returns live
+// models but the frontend omitted it, hiding Zed entirely from the Combo picker.
+// Cline/ClinePass are deliberately NOT here: their page curates the catalog with
+// "Import from /models", and overriding with the whole live feed resurrected every
+// model the user deleted. They keep the same static+custom+alias source as every
+// other provider; re-import is one click away on the provider page.
+const LIVE_CATALOG_PROVIDERS = ["cursor", "zed"];
 
 // Fetch a provider's account-scoped catalog for every active connection and merge
 // the results. Entries collapse by model id on purpose: two connections of the
@@ -135,7 +139,7 @@ export default function ModelSelectModal({
   const [providerNodes, setProviderNodes] = useState([]);
   const [customModels, setCustomModels] = useState([]);
   const [disabledModels, setDisabledModels] = useState({});
-  // Cursor and Cline expose the usable catalog per account, so the static catalog is
+  // Cursor and Zed expose the usable catalog per account, so the static catalog is
   // kept only as a fallback: it goes stale quickly and entitlements differ per account.
   // Single map driven by LIVE_CATALOG_PROVIDERS so the constant cannot drift
   // from the memos below; per-provider arrays stay referentially stable unless
@@ -148,13 +152,9 @@ export default function ModelSelectModal({
     return map;
   }, [filteredActiveProviders]);
   const cursorConnectionIds = liveConnectionIdsByProvider.cursor;
-  const clineConnectionIds = liveConnectionIdsByProvider.cline;
-  const clinepassConnectionIds = liveConnectionIdsByProvider.clinepass;
   const zedConnectionIds = liveConnectionIdsByProvider.zed;
 
   const cursorModels = useLiveProviderModels(isOpen, cursorConnectionIds, "Cursor");
-  const clineModels = useLiveProviderModels(isOpen, clineConnectionIds, "Cline");
-  const clinepassModels = useLiveProviderModels(isOpen, clinepassConnectionIds, "ClinePass");
   const zedModels = useLiveProviderModels(isOpen, zedConnectionIds, "Zed");
 
   const fetchCombos = async () => {
@@ -406,7 +406,7 @@ export default function ModelSelectModal({
           hasModels: mergedModels.length > 0,
         };
       } else {
-        const liveModels = providerId === "cursor" ? cursorModels : providerId === "cline" ? clineModels : providerId === "clinepass" ? clinepassModels : providerId === "zed" ? zedModels : [];
+        const liveModels = providerId === "cursor" ? cursorModels : providerId === "zed" ? zedModels : [];
         const hardcodedModels = liveModels.length > 0
           ? liveModels
           : getModelsByProviderId(providerId);
@@ -500,7 +500,7 @@ export default function ModelSelectModal({
     });
 
     return groups;
-  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, effectiveConnections, deactivatedProviderIds, cursorModels, clineModels, clinepassModels, zedModels]);
+  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, effectiveConnections, deactivatedProviderIds, cursorModels, zedModels]);
 
   // Parse search query into structured query (regex, positive tokens, negative tokens)
   const parsedQuery = useMemo(() => parseSearchQuery(searchQuery), [searchQuery]);
@@ -581,6 +581,9 @@ export default function ModelSelectModal({
     return visibleModels.filter((m) => addedModelValues.includes(m.value));
   }, [visibleModels, addedModelValues]);
 
+  // Batch consumers own the accumulation. Per-model onSelect in a loop reads a list
+  // snapshot captured before the loop (state and props both stay stale inside it),
+  // so "Select All" collapsed to the last entry and fired one render/save per model.
   const handleSelectAllVisible = () => {
     if (visibleUnadded.length === 0) return;
     if (onSelectBatch) {

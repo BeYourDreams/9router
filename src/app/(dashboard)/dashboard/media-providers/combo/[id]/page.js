@@ -118,20 +118,36 @@ export default function ComboDetailPage() {
     if (ok) await fetchAll();
   };
 
+  const saveModels = async (next) => {
+    setProviders(next);
+    await saveCombo({ models: next });
+  };
+
   const handleAddModel = async (model) => {
     const value = model?.value || model;
     if (!value || providers.includes(value)) return;
-    const next = [...providers, value];
-    setProviders(next);
-    await saveCombo({ models: next });
+    await saveModels([...providers, value]);
   };
 
   const handleDeselectModel = async (model) => {
     const value = model?.value || model;
     if (!value || !providers.includes(value)) return;
-    const next = providers.filter((p) => p !== value);
-    setProviders(next);
-    await saveCombo({ models: next });
+    await saveModels(providers.filter((p) => p !== value));
+  };
+
+  // One write + one PUT for bulk add/remove. Looping the single handlers reads
+  // `providers` from the same stale render each time, so every iteration saved the
+  // old list plus one model and only the last one stuck.
+  const handleAddBatch = (items) => {
+    const values = (items || []).map((m) => m?.value || m?.name || m).filter(Boolean);
+    const next = [...new Set([...providers, ...values])];
+    if (next.length === providers.length) return;
+    return saveModels(next);
+  };
+
+  const handleDeselectBatch = (items) => {
+    const values = new Set((items || []).map((m) => m?.value || m?.name || m).filter(Boolean));
+    return saveModels(providers.filter((p) => !values.has(p)));
   };
 
   const handleRemoveProvider = async (idx) => {
@@ -399,6 +415,8 @@ export default function ComboDetailPage() {
           onClose={() => setShowPicker(false)}
           onSelect={handleAddModel}
           onDeselect={handleDeselectModel}
+          onSelectBatch={handleAddBatch}
+          onDeselectBatch={handleDeselectBatch}
           activeProviders={connections}
           modelAliases={modelAliases}
           title={`Add ${kindLabel} Model`}

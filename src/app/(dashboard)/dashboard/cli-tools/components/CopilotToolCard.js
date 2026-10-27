@@ -303,12 +303,20 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
             saveModels(selectedModelsRef.current);
           }}
           onSelect={(model) => {
-            if (!selectedModels.includes(model.value)) {
-              setSelectedModels([...selectedModels, model.value]);
-            }
+            setSelectedModels((prev) => (prev.includes(model.value) ? prev : [...prev, model.value]));
           }}
           onDeselect={(model) => {
-            setSelectedModels(selectedModels.filter(m => m !== model.value));
+            setSelectedModels((prev) => prev.filter((m) => m !== model.value));
+          }}
+          // Single write per bulk action; the per-model handlers above stay correct
+          // in a loop too, but batch keeps it to one state update.
+          onSelectBatch={(items) => {
+            const vals = (items || []).map((m) => m?.value).filter(Boolean);
+            setSelectedModels((prev) => [...new Set([...prev, ...vals])]);
+          }}
+          onDeselectBatch={(items) => {
+            const vals = new Set((items || []).map((m) => m?.value).filter(Boolean));
+            setSelectedModels((prev) => prev.filter((m) => !vals.has(m)));
           }}
           selectedModel={null}
           activeProviders={activeProviders}

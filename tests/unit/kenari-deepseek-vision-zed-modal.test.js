@@ -65,12 +65,14 @@ describe("ModelSelectModal LIVE_CATALOG_PROVIDERS includes zed (#4244)", () => {
     expect(list).toContain('"zed"');
   });
 
-  it("still includes cursor, cline, clinepass", () => {
+  it("still includes cursor; cline/clinepass curate their catalog on the provider page", () => {
     const match = src.match(/const LIVE_CATALOG_PROVIDERS\s*=\s*\[([^\]]+)\]/);
     const list = match[1];
     expect(list).toContain('"cursor"');
-    expect(list).toContain('"cline"');
-    expect(list).toContain('"clinepass"');
+    // Their live feed is the whole upstream catalog; overriding with it resurrected
+    // every model deleted via the provider page. See combo-picker-cline-live-catalog
+    // -and-select-all.test.js.
+    expect(list).not.toContain("cline");
   });
 
   it("zedModels hook call is present in the file", () => {

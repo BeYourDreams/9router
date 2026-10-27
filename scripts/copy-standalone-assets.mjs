@@ -30,6 +30,15 @@ export function copyStandaloneAssets({ projectRoot = process.cwd(), distDir = pr
     console.log(`[standalone-assets] Copied public assets to ${publicDestination}`);
   }
 
+  // The OpenCode free-lane sidecar is spawned by path from cwd; standalone tracing
+  // never picks it up (it is not imported). Same copy the Dockerfile does by hand.
+  const scriptsSource = resolve(projectRoot, "scripts");
+  const scriptsDestination = resolve(standaloneDir, "scripts");
+  if (existsSync(scriptsSource)) {
+    cpSync(scriptsSource, scriptsDestination, { recursive: true, force: true });
+    console.log(`[standalone-assets] Copied scripts/ to ${scriptsDestination}`);
+  }
+
   // Without it beside server.js the standalone build serves requests unsanitized.
   const serverWrapperSource = resolve(projectRoot, "custom-server.js");
   const serverWrapperDestination = resolve(standaloneDir, "custom-server.js");

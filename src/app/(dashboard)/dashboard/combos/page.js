@@ -907,16 +907,40 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders, getCaps }) 
 
   const patch = (p) => onChange({ ...entry, ...p });
 
+  const replaceModels = (next) => {
+    if (next.length === 0) {
+      patch({ models: [DEFAULT_FALLBACK_MODEL] });
+      return;
+    }
+    patch({ models: next });
+  };
+
   const handleAdd = (model) => {
     const value = model?.value || model?.name || model;
     if (!value || models.includes(value)) return;
-    patch({ models: [...models, value] });
+    replaceModels([...models, value]);
   };
 
   const handleDeselect = (model) => {
     const value = model?.value || model?.name || model;
-    const next = models.filter((m) => m !== value);
-    patch({ models: next.length === 0 ? [DEFAULT_FALLBACK_MODEL] : next });
+    replaceModels(models.filter((m) => m !== value));
+  };
+
+  // Bulk add/remove in one onChange. Looping the single handlers would re-read
+  // `models` from the same pre-click render each time, so only the last picked
+  // model would survive (and each iteration would push another parent update).
+  const batchValues = (items) =>
+    (items || []).map((m) => m?.value || m?.name || m).filter(Boolean);
+
+  const handleAddBatch = (items) => {
+    const values = batchValues(items);
+    if (values.length === 0) return;
+    replaceModels(Array.from(new Set([...models, ...values])));
+  };
+
+  const handleDeselectBatch = (items) => {
+    const values = new Set(batchValues(items));
+    replaceModels(models.filter((m) => !values.has(m)));
   };
 
   const handleRemove = (index) => {
@@ -1068,6 +1092,8 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders, getCaps }) 
           onClose={() => setShowModelSelect(false)}
           onSelect={handleAdd}
           onDeselect={handleDeselect}
+          onSelectBatch={handleAddBatch}
+          onDeselectBatch={handleDeselectBatch}
           activeProviders={activeProviders}
           title={`Add ${cap.label} Model`}
           addedModelValues={models}
@@ -1241,13 +1267,14 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
   };
 
   const handleAddModel = (model) => {
-    if (!models.includes(model.value)) {
-      setModels([...models, model.value]);
-    }
+    const value = model?.value || model;
+    if (!value) return;
+    // Functional update: a batch loop must not append to a stale snapshot.
+    setModels((prev) => (prev.includes(value) ? prev : [...prev, value]));
   };
 
   const handleDeselectModel = (model) => {
-    setModels(models.filter((m) => m !== model.value));
+    setModels((prev) => prev.filter((m) => m !== model.value));
   };
 
   const handleRemoveModel = (index) => {
@@ -1369,6 +1396,14 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
           onClose={() => setShowModelSelect(false)}
           onSelect={handleAddModel}
           onDeselect={handleDeselectModel}
+          onSelectBatch={(items) => {
+            const vals = (items || []).map((m) => m?.value || m?.name || m).filter(Boolean);
+            setModels((prev) => [...new Set([...prev, ...vals])]);
+          }}
+          onDeselectBatch={(items) => {
+            const vals = new Set((items || []).map((m) => m?.value || m?.name || m).filter(Boolean));
+            setModels((prev) => prev.filter((m) => !vals.has(m)));
+          }}
           activeProviders={activeProviders}
           modelAliases={modelAliases}
           title="Add Model to Combo"
