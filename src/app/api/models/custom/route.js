@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCustomModels, addCustomModel, deleteCustomModel } from "@/models";
+import { getCombos, updateCombo } from "@/lib/localDb";
 import { CAPACITY_META, isSttTransport } from "@/shared/constants/models";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +64,16 @@ export async function DELETE(request) {
       return NextResponse.json({ error: "providerAlias and id required" }, { status: 400 });
     }
     await deleteCustomModel({ providerAlias, id, type });
+    // Sync: strip the removed provider-internal model from any combo that referenced it.
+    const removedModel = `${providerAlias}/${id}`;
+    const combos = await getCombos();
+    for (const combo of combos) {
+      const models = combo.models || [];
+      const next = models.filter((m) => m !== removedModel);
+      if (next.length !== models.length) {
+        await updateCombo(combo.id, { models: next });
+      }
+    }
     return NextResponse.json({ success: true });
   } catch (error) {
     console.log("Error deleting custom model:", error);

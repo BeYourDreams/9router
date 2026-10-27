@@ -594,11 +594,13 @@ export default function ModelSelectModal({
   };
 
   const handleDeselectAllVisible = () => {
-    if (visibleAdded.length === 0) return;
+    const added = Array.isArray(addedModelValues) ? addedModelValues : [];
+    if (added.length === 0) return;
+    const items = added.map((v) => (typeof v === "string" ? { value: v, name: v } : v));
     if (onDeselectBatch) {
-      onDeselectBatch(visibleAdded);
+      onDeselectBatch(items);
     } else if (onDeselect) {
-      visibleAdded.forEach((model) => onDeselect(model));
+      items.forEach((m) => onDeselect(m));
     }
   };
 
@@ -700,14 +702,14 @@ export default function ModelSelectModal({
                   Select All ({visibleUnadded.length})
                 </button>
               )}
-              {visibleAdded.length > 0 && (
+              {addedModelValues.length > 0 && (
                 <button
                   type="button"
                   onClick={handleDeselectAllVisible}
                   className="px-2 py-0.5 rounded text-[11px] font-medium bg-border/40 text-text-muted hover:text-text-main hover:bg-border/60 transition-colors cursor-pointer"
                   title="Deselect all filtered models"
                 >
-                  Deselect All ({visibleAdded.length})
+                  Deselect All ({addedModelValues.length})
                 </button>
               )}
             </div>
