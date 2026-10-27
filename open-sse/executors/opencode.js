@@ -20,6 +20,7 @@ import {
   syntheticRateLimitResponse,
   describeEgress,
   DIRECT_EGRESS_ID,
+  alternateToProxyOptions,
 } from "../utils/egress.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import {
@@ -504,8 +505,7 @@ export class OpenCodeExecutor extends BaseExecutor {
   // request still goes out on native fetch instead of erroring here.
   async execute(args) {
     const { model, stream, credentials, log } = args;
-    // ponytail: free tier is IP-sensitive; shared proxies burn quota → force direct
-    let proxyOptions = null;
+    const baseProxyOptions = args.proxyOptions || null;
 
     let targetUrl;
     try {
@@ -514,124 +514,75 @@ export class OpenCodeExecutor extends BaseExecutor {
       targetUrl = this.config.baseUrl;
     }
 
-    let egress;
-    try {
-      egress = await resolveEgress({
-        targetUrl,
-        proxyOptions,
-        forceProbe: hasActiveDirectCooldown(),
-      });
-    } catch (error) {
-      log?.debug?.("EGRESS", `resolve failed, failing open: ${error.message}`);
-      egress = {
-        id: DIRECT_EGRESS_ID,
-        kind: "direct",
-        confirmed: false,
-        ip: null,
-        proxyUrl: null,
-        relayUrl: null,
-      };
+    // Candidate egress chain: configured proxy -> direct -> alternates pool
+    const candidates = [];
+    if (baseProxyOptions?.connectionProxyEnabled && baseProxyOptions?.connectionProxyUrl) {
+      candidates.push(baseProxyOptions); // 1. user-configured proxy
+    }
+    candidates.push(null); // 2. direct
+    for (const alternate of baseProxyOptions?.connectionProxyAlternates ?? []) {
+      candidates.push(alternateToProxyOptions(baseProxyOptions, alternate)); // 3. shared pool
     }
 
-    const cooldown = getEgressCooldown(egress);
-    if (cooldown && egress.confirmed) {
-      const selection = selectAlternateProxy(proxyOptions, targetUrl, new Set([egress.id]));
-      if (selection.alternate) {
-        log?.debug?.(
-          "EGRESS",
-          `${describeEgress(egress)} cooling ${Math.ceil(cooldown.retryAfterMs / 1000)}s → ${describeEgress(selection.alternate.egress)}`
-        );
-        proxyOptions = selection.alternate.proxyOptions;
-        egress = selection.alternate.egress;
-      } else {
-        const retryAfterMs = Math.min(cooldown.retryAfterMs, selection.earliestCooldownMs ?? Infinity);
-        log?.warn?.(
-          "EGRESS",
-          `${describeEgress(egress)} cooling ${Math.ceil(cooldown.retryAfterMs / 1000)}s; no alternate — local 429`
-        );
-        return {
-          response: syntheticRateLimitResponse(retryAfterMs),
-          url: targetUrl,
-          headers: {},
-          transformedBody: args.body,
+    // Dedupe by resolved egress id, skip cooled, attempt sequentially
+    const seen = new Set();
+    let retryBody = cloneRequestBody(args.body);
+    let lastPrepared = null;
+    let lastResult = null;
+
+    for (const proxyOptions of candidates) {
+      let egress;
+      try {
+        egress = await resolveEgress({
+          targetUrl,
+          proxyOptions,
+          forceProbe: hasActiveDirectCooldown(),
+        });
+      } catch (error) {
+        log?.debug?.("EGRESS", `resolve failed, failing open: ${error.message}`);
+        egress = {
+          id: DIRECT_EGRESS_ID,
+          kind: "direct",
+          confirmed: false,
+          ip: null,
+          proxyUrl: null,
+          relayUrl: null,
         };
       }
-    }
 
-    const prepared = this.prepareRequestCredentials({ ...args, egressId: egress.id });
-    // Snapshot before the first attempt: transformRequest mutates `args.body`, and
-    // a rotated-session retry must start from the untouched request.
-    const retryBody = cloneRequestBody(args.body);
+      if (seen.has(egress.id)) continue;
+      seen.add(egress.id);
 
-    let result = await super.execute({ ...args, credentials: prepared, proxyOptions });
-
-    if (!result?.response || result.response.status !== 429) return result;
-
-    const bodyText = await readResponseText(result.response);
-    const retryAfterMs = parseRetryAfterMs(result.response.headers, bodyText);
-    const rotated = rotateSession(prepared, egress.id);
-
-    if (egress.kind === "direct" && !egress.confirmed) {
-      try {
-        const probed = await resolveEgress({ targetUrl, proxyOptions, forceProbe: true, fresh: true });
-        if (probed.confirmed) egress = probed;
-      } catch (error) {
-        log?.debug?.("EGRESS", `direct probe failed, fail-open: ${error.message}`);
+      const cooldown = getEgressCooldown(egress);
+      if (cooldown && egress.confirmed) {
+        log?.debug?.("EGRESS", `${describeEgress(egress)} cooling ${Math.ceil(cooldown.retryAfterMs / 1000)}s, trying next candidate`);
+        continue;
       }
+
+      const prepared = this.prepareRequestCredentials({ ...args, body: retryBody, egressId: egress.id });
+      lastPrepared = prepared;
+
+      const result = await super.execute({ ...args, credentials: prepared, proxyOptions });
+      lastResult = result;
+
+      if (!result?.response || result.response.status !== 429) return result;
+
+      const bodyText = await readResponseText(result.response);
+      const retryAfterMs = parseRetryAfterMs(result.response.headers, bodyText);
+      markEgressCooling(egress, retryAfterMs);
+
+      // Rotate session for next attempt (free quota is per session)
+      rotateSession(prepared, egress.id);
     }
 
-    const selection = selectAlternateProxy(proxyOptions, targetUrl, new Set([egress.id]));
-    // Free quota is accounted per session, so a fresh session earns one retry on
-    // any egress — not just direct. Only a native client session (not rotated)
-    // has nothing to retry with.
-    const retrySameEgress = rotated;
-
-    if (!selection.alternate && !retrySameEgress) {
-      const cooling = markEgressCooling(egress, retryAfterMs);
-      if (cooling) {
-        log?.warn?.(
-          "EGRESS",
-          `${describeEgress(egress)} cooling ${Math.ceil(cooling.retryAfterMs / 1000)}s (429, retry-after ${result.response.headers?.get?.("retry-after") ?? "none"})`
-        );
-      }
-      return result;
-    }
-
-    if (selection.alternate) {
-      const cooling = markEgressCooling(egress, retryAfterMs);
-      if (cooling) {
-        log?.warn?.(
-          "EGRESS",
-          `${describeEgress(egress)} cooling ${Math.ceil(cooling.retryAfterMs / 1000)}s (429, retry-after ${result.response.headers?.get?.("retry-after") ?? "none"})`
-        );
-      }
-    }
-
-    const retryEgress = selection.alternate?.egress || egress;
-    const retryProxyOptions = selection.alternate?.proxyOptions ?? proxyOptions;
-    const retryCredentials = this.prepareRequestCredentials({
-      ...args,
-      body: retryBody,
-      egressId: retryEgress.id,
-    });
-
-    log?.warn?.(
-      "EGRESS",
-      `429 on ${describeEgress(egress)} → retry once on ${describeEgress(retryEgress)}`
-    );
-
-    const retryResult = await super.execute({
-      ...args,
-      body: retryBody,
-      credentials: retryCredentials,
-      proxyOptions: retryProxyOptions,
-    });
-
-    if (retryResult?.response?.status === 429) {
-      const retryText = await readResponseText(retryResult.response);
-      markEgressCooling(retryEgress, parseRetryAfterMs(retryResult.response.headers, retryText));
-    }
-    return retryResult;
+    // Exhausted all candidates
+    log?.warn?.("EGRESS", `All egress candidates exhausted, returning last 429`);
+    return lastResult ?? {
+      response: syntheticRateLimitResponse(EGRESS_CONFIG.defaultCooldownMs),
+      url: targetUrl,
+      headers: {},
+      transformedBody: args.body,
+    };
   }
 
   async fetchUpstream(url, options, proxyOptions = null) {
