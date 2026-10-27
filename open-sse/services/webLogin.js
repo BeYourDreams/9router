@@ -174,7 +174,18 @@ async function launchLoginBrowser(chromium, dir, executablePath) {
       headless: false,
       executablePath,
       viewport: null,
-      args: ["--disable-blink-features=AutomationControlled"],
+      args: [
+        "--disable-blink-features=AutomationControlled",
+        "--disable-features=IsolateOrigins,site-per-process",
+        "--disable-site-isolation-trials",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-infobars",
+        "--disable-extensions-except=",
+        "--disable-extensions",
+        "--password-store=basic",
+        "--use-mock-keychain",
+      ],
     });
   } catch (error) {
     if (!/ProcessSingleton|SingletonLock/i.test(String(error?.message || ""))) throw error;
@@ -183,7 +194,18 @@ async function launchLoginBrowser(chromium, dir, executablePath) {
       headless: false,
       executablePath,
       viewport: null,
-      args: ["--disable-blink-features=AutomationControlled"],
+      args: [
+        "--disable-blink-features=AutomationControlled",
+        "--disable-features=IsolateOrigins,site-per-process",
+        "--disable-site-isolation-trials",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-infobars",
+        "--disable-extensions-except=",
+        "--disable-extensions",
+        "--password-store=basic",
+        "--use-mock-keychain",
+      ],
     });
   }
 }
@@ -201,7 +223,13 @@ async function runLogin(session, config) {
 
   try {
     const page = context.pages()[0] || (await context.newPage());
+    // Hide webdriver property before navigation
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+    });
     await page.goto(config.loginUrl, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
+    // Wait a bit for potential Cloudflare challenge or redirects
+    await page.waitForTimeout(3000);
 
     const deadline = Date.now() + LOGIN_TIMEOUT_MS;
     while (Date.now() < deadline) {
