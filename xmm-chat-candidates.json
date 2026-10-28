@@ -1,0 +1,285 @@
+[
+  {
+    "url": "https://account.xiaomi.com/pass/serviceLogin?callback=https%3A%2F%2Faistudio.xiaomimimo.com%2Fsts%3Fsign%3Du2csOOZV5GZNrWSaYGFRyMjxNiE%253D%26followup%3Dhttps%253A%252F%252Faistudio.xiaomimimo.com%252F%2523&sid=xiaomichatbot&_group=DEFAULT",
+    "method": "GET",
+    "headers": {
+      "referer": "https://aistudio.xiaomimimo.com/",
+      "upgrade-insecure-requests": "1",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": "\"Windows\""
+    },
+    "postData": null
+  },
+  {
+    "url": "https://account.xiaomi.com/fe/service/login?_group=DEFAULT&sid=xiaomichatbot&qs=%253Fcallback%253Dhttps%25253A%25252F%25252Faistudio.xiaomimimo.com%25252Fsts%25253Fsign%25253Du2csOOZV5GZNrWSaYGFRyMjxNiE%2525253D%252526followup%25253Dhttps%2525253A%2525252F%2525252Faistudio.xiaomimimo.com%2525252F%25252523%2526sid%253Dxiaomichatbot%2526_group%253DDEFAULT&callback=https%3A%2F%2Faistudio.xiaomimimo.com%2Fsts%3Fsign%3Du2csOOZV5GZNrWSaYGFRyMjxNiE%253D%26followup%3Dhttps%253A%252F%252Faistudio.xiaomimimo.com%252F%2523&_sign=y4csmComcZgS%2Ba%2BkItlS1mrFw98%3D&serviceParam=%7B%22checkSafePhone%22%3Afalse%2C%22checkSafeAddress%22%3Afalse%2C%22lsrp_score%22%3A0.0%7D&showActiveX=false&theme=&needTheme=false&bizDeviceType=",
+    "method": "GET",
+    "headers": {
+      "referer": "https://aistudio.xiaomimimo.com/",
+      "upgrade-insecure-requests": "1",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": "\"Windows\""
+    },
+    "postData": null
+  },
+  {
+    "url": "https://account.xiaomi.com/pass2/config?key=login&key=register&_locale=zh_CN&sid=xiaomichatbot&_uRegion=",
+    "method": "GET",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://account.xiaomi.com/fe/service/login?_group=DEFAULT&sid=xiaomichatbot&qs=%253Fcallback%253Dhttps%25253A%25252F%25252Faistudio.xiaomimimo.com%25252Fsts%25253Fsign%25253Du2csOOZV5GZNrWSaYGFRyMjxNiE%2525253D%252526followup%25253Dhttps%2525253A%2525252F%2525252Faistudio.xiaomimimo.com%2525252F%25252523%2526sid%253Dxiaomichatbot%2526_group%253DDEFAULT&callback=https%3A%2F%2Faistudio.xiaomimimo.com%2Fsts%3Fsign%3Du2csOOZV5GZNrWSaYGFRyMjxNiE%253D%26followup%3Dhttps%253A%252F%252Faistudio.xiaomimimo.com%252F%2523&_sign=y4csmComcZgS%2Ba%2BkItlS1mrFw98%3D&serviceParam=%7B%22checkSafePhone%22%3Afalse%2C%22checkSafeAddress%22%3Afalse%2C%22lsrp_score%22%3A0.0%7D&showActiveX=false&theme=&needTheme=false&bizDeviceType=",
+      "x-requested-with": "XMLHttpRequest",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "accept": "application/json, text/plain, */*",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0"
+    },
+    "postData": null
+  },
+  {
+    "url": "https://account.xiaomi.com/pass/serviceLogin?callback=https%3A%2F%2Faistudio.xiaomimimo.com%2Fsts%3Fsign%3Du2csOOZV5GZNrWSaYGFRyMjxNiE%253D%26followup%3Dhttps%253A%252F%252Faistudio.xiaomimimo.com%252F%2523&sid=xiaomichatbot&_group=DEFAULT",
+    "method": "GET",
+    "headers": {
+      "referer": "https://aistudio.xiaomimimo.com/",
+      "upgrade-insecure-requests": "1",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": "\"Windows\""
+    },
+    "postData": null
+  },
+  {
+    "url": "https://account.xiaomi.com/fe/service/login?_group=DEFAULT&sid=xiaomichatbot&qs=%253Fcallback%253Dhttps%25253A%25252F%25252Faistudio.xiaomimimo.com%25252Fsts%25253Fsign%25253Du2csOOZV5GZNrWSaYGFRyMjxNiE%2525253D%252526followup%25253Dhttps%2525253A%2525252F%2525252Faistudio.xiaomimimo.com%2525252F%25252523%2526sid%253Dxiaomichatbot%2526_group%253DDEFAULT&callback=https%3A%2F%2Faistudio.xiaomimimo.com%2Fsts%3Fsign%3Du2csOOZV5GZNrWSaYGFRyMjxNiE%253D%26followup%3Dhttps%253A%252F%252Faistudio.xiaomimimo.com%252F%2523&_sign=y4csmComcZgS%2Ba%2BkItlS1mrFw98%3D&serviceParam=%7B%22checkSafePhone%22%3Afalse%2C%22checkSafeAddress%22%3Afalse%2C%22lsrp_score%22%3A0.0%7D&showActiveX=false&theme=&needTheme=false&bizDeviceType=",
+    "method": "GET",
+    "headers": {
+      "referer": "https://aistudio.xiaomimimo.com/",
+      "upgrade-insecure-requests": "1",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": "\"Windows\""
+    },
+    "postData": null
+  },
+  {
+    "url": "https://account.xiaomi.com/pass2/config?key=login&key=register&_locale=zh_CN&sid=xiaomichatbot&_uRegion=",
+    "method": "GET",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://account.xiaomi.com/fe/service/login?_group=DEFAULT&sid=xiaomichatbot&qs=%253Fcallback%253Dhttps%25253A%25252F%25252Faistudio.xiaomimimo.com%25252Fsts%25253Fsign%25253Du2csOOZV5GZNrWSaYGFRyMjxNiE%2525253D%252526followup%25253Dhttps%2525253A%2525252F%2525252Faistudio.xiaomimimo.com%2525252F%25252523%2526sid%253Dxiaomichatbot%2526_group%253DDEFAULT&callback=https%3A%2F%2Faistudio.xiaomimimo.com%2Fsts%3Fsign%3Du2csOOZV5GZNrWSaYGFRyMjxNiE%253D%26followup%3Dhttps%253A%252F%252Faistudio.xiaomimimo.com%252F%2523&_sign=y4csmComcZgS%2Ba%2BkItlS1mrFw98%3D&serviceParam=%7B%22checkSafePhone%22%3Afalse%2C%22checkSafeAddress%22%3Afalse%2C%22lsrp_score%22%3A0.0%7D&showActiveX=false&theme=&needTheme=false&bizDeviceType=",
+      "x-requested-with": "XMLHttpRequest",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "accept": "application/json, text/plain, */*",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0"
+    },
+    "postData": null
+  },
+  {
+    "url": "https://account.xiaomi.com/pass/sns/login/check?appid=wxxmzh&sid=xiaomichatbot&_locale=zh_CN&deviceFingerprint=ad381a34e8ce6cfe7feac1775988b1ba",
+    "method": "GET",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://account.xiaomi.com/fe/service/login/password?_group=DEFAULT&sid=xiaomichatbot&qs=%253Fcallback%253Dhttps%25253A%25252F%25252Faistudio.xiaomimimo.com%25252Fsts%25253Fsign%25253Du2csOOZV5GZNrWSaYGFRyMjxNiE%2525253D%252526followup%25253Dhttps%2525253A%2525252F%2525252Faistudio.xiaomimimo.com%2525252F%25252523%2526sid%253Dxiaomichatbot%2526_group%253DDEFAULT&callback=https%3A%2F%2Faistudio.xiaomimimo.com%2Fsts%3Fsign%3Du2csOOZV5GZNrWSaYGFRyMjxNiE%253D%26followup%3Dhttps%253A%252F%252Faistudio.xiaomimimo.com%252F%2523&_sign=y4csmComcZgS%2Ba%2BkItlS1mrFw98%3D&serviceParam=%7B%22checkSafePhone%22%3Afalse%2C%22checkSafeAddress%22%3Afalse%2C%22lsrp_score%22%3A0.0%7D&showActiveX=false&theme=&needTheme=false&bizDeviceType=&_locale=zh_CN",
+      "x-requested-with": "XMLHttpRequest",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "accept": "application/json, text/plain, */*",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0"
+    },
+    "postData": null
+  },
+  {
+    "url": "https://account.xiaomi.com/pass/sns/login/auth?appid=wxxmzh&scope=snsapi_login&callback=https%3A%2F%2Faistudio.xiaomimimo.com%2Fsts%3Fsign%3Du2csOOZV5GZNrWSaYGFRyMjxNiE%253D%26followup%3Dhttps%253A%252F%252Faistudio.xiaomimimo.com%252F%2523&sid=xiaomichatbot&_new=true&policyName=miaccount&deviceFingerprint=ad381a34e8ce6cfe7feac1775988b1ba",
+    "method": "GET",
+    "headers": {
+      "referer": "https://account.xiaomi.com/fe/service/login/password?_group=DEFAULT&sid=xiaomichatbot&qs=%253Fcallback%253Dhttps%25253A%25252F%25252Faistudio.xiaomimimo.com%25252Fsts%25253Fsign%25253Du2csOOZV5GZNrWSaYGFRyMjxNiE%2525253D%252526followup%25253Dhttps%2525253A%2525252F%2525252Faistudio.xiaomimimo.com%2525252F%25252523%2526sid%253Dxiaomichatbot%2526_group%253DDEFAULT&callback=https%3A%2F%2Faistudio.xiaomimimo.com%2Fsts%3Fsign%3Du2csOOZV5GZNrWSaYGFRyMjxNiE%253D%26followup%3Dhttps%253A%252F%252Faistudio.xiaomimimo.com%252F%2523&_sign=y4csmComcZgS%2Ba%2BkItlS1mrFw98%3D&serviceParam=%7B%22checkSafePhone%22%3Afalse%2C%22checkSafeAddress%22%3Afalse%2C%22lsrp_score%22%3A0.0%7D&showActiveX=false&theme=&needTheme=false&bizDeviceType=&_locale=zh_CN",
+      "upgrade-insecure-requests": "1",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": "\"Windows\""
+    },
+    "postData": null
+  },
+  {
+    "url": "https://zyjc.sec.qq.com/dom?v=1.3&u=https%3A%2F%2Fopen.weixin.qq.com%2Fconnect%2Fqrconnect%3Fappid%3Dwxa21de3acc0d5e79b%26redirect_uri%3Dhttps%3A%2F%2Fsns.account.xiaomi.com%2Fpass%2Fsns%2Flogin%2Fload%3FdeviceFingerprint%3Dad381a34e8ce6cfe7feac1775988b1ba%26response_type%3Dcode%26scope%3Dsnsapi_login%26state%3DSTATE_386117%23wechat_redirect&r=https%3A%2F%2Faccount.xiaomi.com%2Ffe%2Fservice%2Flogin%2Fpassword%3F_group%3DDEFAULT%26sid%3Dxiaomichatbot%26qs%3D%253Fcallback%253Dhttps%25253A%25252F%25252Faistudio.xiaomimimo.com%25252Fsts%25253Fsign%25253Du2csOOZV5GZNrWSaYGFRyMjxNiE%2525253D%252526followup%25253Dhttps%2525253A%2525252F%2525252Faistudio.xiaomimimo.com%2525252F%25252523%2526sid%253Dxiaomichatbot%2526_group%253DDEFAULT%26callback%3Dhttps%3A%2F%2Faistudio.xiaomimimo.com%2Fsts%3Fsign%3Du2csOOZV5GZNrWSaYGFRyMjxNiE%253D%26followup%3Dhttps%253A%252F%252Faistudio.xiaomimimo.com%252F%2523%26_sign%3Dy4csmComcZgS%2Ba%2BkItlS1mrFw98%3D%26serviceParam%3D%7B%22checkSafePhone%22%3Afalse%2C%22checkSafeAddress%22%3Afalse%2C%22lsrp_score%22%3A0.0%7D%26showActiveX%3Dfalse%26theme%3D%26needTheme%3Dfalse%26bizDeviceType%3D%26_locale%3Dzh_CN",
+    "method": "GET",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://open.weixin.qq.com/",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0"
+    },
+    "postData": null
+  },
+  {
+    "url": "https://localhost.weixin.qq.com:14013/api/check-login",
+    "method": "POST",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://open.weixin.qq.com/",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "accept": "*/*",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "content-type": "application/json",
+      "sec-ch-ua-mobile": "?0"
+    },
+    "postData": "{\"apiname\":\"qrconnectchecklogin\",\"jsdata\":{\"appid\":\"wxa21de3acc0d5e79b\",\"scope\":\"snsapi_login\",\"redirect_uri\":\"https://sns.account.xiaomi.com/pass/sns/login/load?deviceFingerprint=ad381a34e8ce6cfe7feac1775988b1ba\",\"state\":\"STATE_386117\"}}"
+  },
+  {
+    "url": "https://localhost.weixin.qq.com:14014/api/check-login",
+    "method": "POST",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://open.weixin.qq.com/",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "accept": "*/*",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "content-type": "application/json",
+      "sec-ch-ua-mobile": "?0"
+    },
+    "postData": "{\"apiname\":\"qrconnectchecklogin\",\"jsdata\":{\"appid\":\"wxa21de3acc0d5e79b\",\"scope\":\"snsapi_login\",\"redirect_uri\":\"https://sns.account.xiaomi.com/pass/sns/login/load?deviceFingerprint=ad381a34e8ce6cfe7feac1775988b1ba\",\"state\":\"STATE_386117\"}}"
+  },
+  {
+    "url": "https://localhost.weixin.qq.com:14015/api/check-login",
+    "method": "POST",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://open.weixin.qq.com/",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "accept": "*/*",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "content-type": "application/json",
+      "sec-ch-ua-mobile": "?0"
+    },
+    "postData": "{\"apiname\":\"qrconnectchecklogin\",\"jsdata\":{\"appid\":\"wxa21de3acc0d5e79b\",\"scope\":\"snsapi_login\",\"redirect_uri\":\"https://sns.account.xiaomi.com/pass/sns/login/load?deviceFingerprint=ad381a34e8ce6cfe7feac1775988b1ba\",\"state\":\"STATE_386117\"}}"
+  },
+  {
+    "url": "https://localhost.weixin.qq.com:13013/api/check-login",
+    "method": "POST",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://open.weixin.qq.com/",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "accept": "*/*",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "content-type": "application/json",
+      "sec-ch-ua-mobile": "?0"
+    },
+    "postData": "{\"apiname\":\"qrconnectchecklogin\",\"jsdata\":{\"appid\":\"wxa21de3acc0d5e79b\",\"scope\":\"snsapi_login\",\"redirect_uri\":\"https://sns.account.xiaomi.com/pass/sns/login/load?deviceFingerprint=ad381a34e8ce6cfe7feac1775988b1ba\",\"state\":\"STATE_386117\"}}"
+  },
+  {
+    "url": "https://localhost.weixin.qq.com:13014/api/check-login",
+    "method": "POST",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://open.weixin.qq.com/",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "accept": "*/*",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "content-type": "application/json",
+      "sec-ch-ua-mobile": "?0"
+    },
+    "postData": "{\"apiname\":\"qrconnectchecklogin\",\"jsdata\":{\"appid\":\"wxa21de3acc0d5e79b\",\"scope\":\"snsapi_login\",\"redirect_uri\":\"https://sns.account.xiaomi.com/pass/sns/login/load?deviceFingerprint=ad381a34e8ce6cfe7feac1775988b1ba\",\"state\":\"STATE_386117\"}}"
+  },
+  {
+    "url": "https://localhost.weixin.qq.com:13015/api/check-login",
+    "method": "POST",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://open.weixin.qq.com/",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "accept": "*/*",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "content-type": "application/json",
+      "sec-ch-ua-mobile": "?0"
+    },
+    "postData": "{\"apiname\":\"qrconnectchecklogin\",\"jsdata\":{\"appid\":\"wxa21de3acc0d5e79b\",\"scope\":\"snsapi_login\",\"redirect_uri\":\"https://sns.account.xiaomi.com/pass/sns/login/load?deviceFingerprint=ad381a34e8ce6cfe7feac1775988b1ba\",\"state\":\"STATE_386117\"}}"
+  },
+  {
+    "url": "https://aistudio.xiaomimimo.com/open-apis/chat/conversation/list?xiaomichatbot_ph=HT%2FGkQGR%2BA6SObOmojivgg%3D%3D",
+    "method": "POST",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://aistudio.xiaomimimo.com/",
+      "accept-language": "system",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "x-timezone": "Asia/Shanghai",
+      "sec-ch-ua-mobile": "?0",
+      "traceparent": "00-9a4778f66e6726ef048a561d02e37ce3-61bc0b72b4a31fb3-01",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "content-type": "application/json"
+    },
+    "postData": "{\"pageInfo\":{\"pageNum\":1,\"pageSize\":20}}"
+  },
+  {
+    "url": "https://aistudio.xiaomimimo.com/fastchat/open-apis/chat/conversation/list?xiaomichatbot_ph=HT%2FGkQGR%2BA6SObOmojivgg%3D%3D",
+    "method": "POST",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://aistudio.xiaomimimo.com/",
+      "accept-language": "system",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "x-timezone": "Asia/Shanghai",
+      "sec-ch-ua-mobile": "?0",
+      "traceparent": "00-9a4778f66e6726ef048a561d02e37ce3-d81f41b7d53d41a1-01",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "content-type": "application/json"
+    },
+    "postData": "{\"pageInfo\":{\"pageNum\":1,\"pageSize\":20}}"
+  },
+  {
+    "url": "https://aistudio.xiaomimimo.com/open-apis/chat/conversation/save?xiaomichatbot_ph=HT%2FGkQGR%2BA6SObOmojivgg%3D%3D",
+    "method": "POST",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://aistudio.xiaomimimo.com/",
+      "accept-language": "system",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "x-timezone": "Asia/Shanghai",
+      "sec-ch-ua-mobile": "?0",
+      "traceparent": "00-dae355a5d28ea5a523a431f5adc9b1b3-d38af9b5cb35fc25-01",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "content-type": "application/json"
+    },
+    "postData": "{\"conversationId\":\"babcb0bb5505ae7d95fdb0e27d5983c2\",\"title\":\"新对话\",\"type\":\"chat\"}"
+  },
+  {
+    "url": "https://aistudio.xiaomimimo.com/open-apis/react/chat?xiaomichatbot_ph=HT%2FGkQGR%2BA6SObOmojivgg%3D%3D",
+    "method": "POST",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://aistudio.xiaomimimo.com/",
+      "accept-language": "system",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "x-timezone": "Asia/Shanghai",
+      "sec-ch-ua-mobile": "?0",
+      "traceparent": "00-04c374e729364bf026a525ea65135e0a-81a460700805c8c1-01",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "content-type": "application/json"
+    },
+    "postData": "{\"msgId\":\"705ae05c1f76c5e610b87d110711a112\",\"conversationId\":\"babcb0bb5505ae7d95fdb0e27d5983c2\",\"query\":\"测试\",\"isEditedQuery\":false,\"modelConfig\":{\"enableThinking\":false,\"webSearchStatus\":\"disabled\",\"model\":\"mimo-v2.6-pro\"},\"multiMedias\":[]}"
+  },
+  {
+    "url": "https://aistudio.xiaomimimo.com/open-apis/chat/conversation/genTitle?xiaomichatbot_ph=HT%2FGkQGR%2BA6SObOmojivgg%3D%3D",
+    "method": "POST",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://aistudio.xiaomimimo.com/",
+      "accept-language": "system",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\"",
+      "x-timezone": "Asia/Shanghai",
+      "sec-ch-ua-mobile": "?0",
+      "traceparent": "00-cdf92fb8d2a7959d54797af1c7c940db-944505693282e3bc-01",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "content-type": "application/json"
+    },
+    "postData": "{\"conversationId\":\"babcb0bb5505ae7d95fdb0e27d5983c2\",\"content\":\"测试 The user just said \\\"测试\\\" (test). This is a simple greeting/test message. I should respond in a friendly, conversational way in Chinese. No tools needed.\\n\\n你好！我在的，随时可以开始。你想聊点什么，或者需要我帮你做什么？\"}"
+  }
+]

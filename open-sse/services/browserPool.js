@@ -52,7 +52,10 @@ function createBrowserPoolMetrics() {
   };
 }
 
-const state = {
+// Anchored on globalThis: a Next dev HMR re-evaluation of this module would
+// otherwise reset `state` and orphan the live browser + warm signed-in pages.
+// Prod restart = process death, so this buys nothing there.
+const state = (globalThis.__ninerouterBrowserPoolState ??= {
   browser: null,
   engine: null, // "obscura" | "cloakbrowser" | "chromium"
   headedBrowser: null,
@@ -67,7 +70,7 @@ const state = {
   cloakLaunch: null,
   cloakLaunchResolved: false,
   metrics: createBrowserPoolMetrics(),
-};
+});
 
 const POOL_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const CONTEXT_TTL_MS = 10 * 60 * 1000; // 10 min — evict stale contexts
