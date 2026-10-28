@@ -144,11 +144,13 @@ function extractClientSessionId(headers, body, scope = "") {
     const antigravity = extractAntigravitySession(body);
     if (antigravity) return `antigravity:${antigravity}`;
     for (const key of SESSION_HEADER_KEYS) {
+        // x-client-request-id is request-scoped by definition — it must never seed a
+        // conversation session, otherwise every request gets a new session and prompt
+        // cache misses on every turn. Kiro already excluded it; extend to all scopes.
+        if (key.toLowerCase() === "x-client-request-id") continue;
         const v = headerValue(headers, key);
         if (v) return v;
     }
-    const requestId = scope === "kiro" ? null : headerValue(headers, "x-client-request-id");
-    if (requestId) return requestId;
     const fromBody =
         normalizeSessionId(body?.prompt_cache_key) ||
         normalizeSessionId(body?.session_id) ||
@@ -163,26 +165,38 @@ function requestMessages(body) {
     return [];
 }
 
-// Accumulate assistant text from OpenAI/Responses-style input/messages (cap-limited)
+// Accumulate assistant output from OpenAI/Responses-style input/messages (cap-limited)
+// A tool-only turn is still a turn: agent tool loops carry tool_use/tool_calls blocks
+// and no text, and a text-only anchor would make every turn look like a new
+// conversation — cache miss every turn.
 function accumulateAssistantText(body) {
     const items = requestMessages(body);
-    if (!items) return "";
+    if (!items) return { text: "", hasTool: false };
     let text = "";
+    let hasTool = false;
     for (const item of items) {
         if (item?.role !== "assistant") continue;
         if (typeof item.content === "string") text += item.content;
         else if (Array.isArray(item.content)) {
-            for (const c of item.content) text += c?.text || c?.output || "";
+            for (const c of item.content) {
+                if (c?.type === "tool_use") { hasTool = true; text += `${c.name || ""}${JSON.stringify(c.input || {})}`; }
+                else text += c?.text || c?.output || "";
+            }
         }
+        for (const call of Array.isArray(item.tool_calls) ? item.tool_calls : []) {
+            hasTool = true;
+            text += `${call?.function?.name || ""}${call?.function?.arguments || ""}`;
+        }
+        if (hasTool) break;              // one tool call is a stable anchor
         if (text.length >= ASSISTANT_CAP_LEN) break;
     }
-    return text;
+    return { text, hasTool };
 }
 
-// Stable session id keyed on accumulated assistant text (avoids collision on identical first user prompt)
+// Stable session id keyed on accumulated assistant output (avoids collision on identical first user prompt)
 function assistantTextSessionId(scope, body) {
-    const text = accumulateAssistantText(body);
-    if (text.length < ASSISTANT_MIN_LEN) return null;
+    const { text, hasTool } = accumulateAssistantText(body);
+    if (!hasTool && text.length < ASSISTANT_MIN_LEN) return null;
     const hash = sha16(`${scope}:${text.slice(0, ASSISTANT_CAP_LEN)}`);
     const existing = assistantSessionStore.get(hash);
     if (existing) {

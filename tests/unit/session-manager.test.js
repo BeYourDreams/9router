@@ -138,7 +138,7 @@ describe("resolveSessionId", () => {
     expect(got).toBe("user-123");
   });
 
-  it("keeps x-client-request-id as a session override outside Kiro scope", () => {
+  it("ignores x-client-request-id as a session source (request-scoped)", () => {
     const got = resolveSessionId({
       headers: { "x-client-request-id": "req-1" },
       body: bodyWithAssistant,
@@ -146,7 +146,9 @@ describe("resolveSessionId", () => {
       scope: "codex",
     });
 
-    expect(got).toBe("req-1");
+    expect(got).not.toBe("req-1");
+    // Falls back to assistant text anchor (80 chars of 'x')
+    expect(got).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\d{13}$/);
   });
 
 

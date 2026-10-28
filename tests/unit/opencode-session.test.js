@@ -395,7 +395,7 @@ describe("OpenCode Stable Session Reuse (429 follow-up)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const firstSession = fetchMock.mock.calls[0][1].headers["x-opencode-session"];
     const secondSession = fetchMock.mock.calls[1][1].headers["x-opencode-session"];
-    expect(firstSession).toBe(translateSessionId("conversation-hint", "claude", "direct"));
+    expect(firstSession).toBe(translateSessionId("conversation-hint", "claude"));
     expect(secondSession).not.toBe(firstSession);
     expect(result.response.status).toBe(200);
   });

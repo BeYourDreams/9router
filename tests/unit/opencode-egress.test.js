@@ -200,7 +200,7 @@ describe("OpenCode free-lane egress switching", () => {
     expect(fetchMock.mock.calls[1][1].headers["x-opencode-session"]).toBe(native);
   });
 
-  it("mints one session per (conversation, egress) and reuses it while the egress is stable", () => {
+  it("keeps one session per conversation regardless of egress (prefix invariance)", () => {
     const executor = getExecutor("opencode");
     const credentials = { rawHeaders: {} };
     const body = makeBody();
@@ -217,9 +217,8 @@ describe("OpenCode free-lane egress switching", () => {
     const onB = prepare("proxy:b");
 
     expect(onA).toBe(onA2);
-    expect(onB).not.toBe(onA);
+    expect(onB).toBe(onA); // same conversation, same session — prefix invariance
     expect(onA).toMatch(OPENCODE_SESSION_RE);
-    expect(onB).toMatch(OPENCODE_SESSION_RE);
   });
 
   it("does not probe direct egress on the normal path", async () => {
