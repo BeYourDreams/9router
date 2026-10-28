@@ -1105,7 +1105,7 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders, getCaps }) 
   );
 }
 
-function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove }) {
+function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveTop, onMoveUp, onMoveDown, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -1173,6 +1173,14 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
 
       {/* Priority arrows */}
       <div className="flex shrink-0 items-center gap-0.5">
+        <button
+          onClick={onMoveTop}
+          disabled={isFirst}
+          className={`p-0.5 rounded ${isFirst ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5"}`}
+          title="Move to first"
+        >
+          <span className="material-symbols-outlined text-[12px]">vertical_align_top</span>
+        </button>
         <button
           onClick={onMoveUp}
           disabled={isFirst}
@@ -1288,6 +1296,11 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
     setModels(newModels);
   };
 
+  const handleMoveTop = (index) => {
+    if (index === 0) return;
+    setModels([models[index], ...models.filter((_, i) => i !== index)]);
+  };
+
   const handleMoveDown = (index) => {
     if (index === models.length - 1) return;
     const newModels = [...models];
@@ -1352,6 +1365,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
                         updated[index] = newVal;
                         setModels(updated);
                       }}
+                      onMoveTop={() => handleMoveTop(index)}
                       onMoveUp={() => handleMoveUp(index)}
                       onMoveDown={() => handleMoveDown(index)}
                       onRemove={() => handleRemoveModel(index)}
