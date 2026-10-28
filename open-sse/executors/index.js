@@ -24,7 +24,7 @@ import { UcWebExecutor } from "./uc-web.js";
 import { ChatGptWebExecutor } from "./chatgpt-web.js";
 import { ChatGLMWebExecutor } from "./chatglm-web.js";
 import { XiaomiMiMoWebExecutor } from "./xiaomimimo-web.js";
-import { OllamaLocalExecutor }
+import { OllamaLocalExecutor } from "./ollama-local.js";
 import { CommandCodeExecutor } from "./commandcode.js";
 import { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 import { XiaomiMimoExecutor } from "./xiaomi-mimo.js";
@@ -71,7 +71,7 @@ const executors = {
   "chatglm-web": new ChatGLMWebExecutor(),
   "xiaomimimo-web": new XiaomiMiMoWebExecutor(),
   "ollama-local": new OllamaLocalExecutor(),
-  commandcode: new CommandCodeExecutor()
+  commandcode: new CommandCodeExecutor(),
   "xiaomi-tokenplan": new XiaomiTokenplanExecutor(),
   "xiaomi-mimo": new XiaomiMimoExecutor(),
   "mimo-free": new MimoFreeExecutor(),
@@ -131,7 +131,7 @@ export { MuseWebExecutor } from "./muse-web.js";
 export { ChatGptWebExecutor } from "./chatgpt-web.js";
 export { ChatGLMWebExecutor } from "./chatglm-web.js";
 export { XiaomiMiMoWebExecutor } from "./xiaomimimo-web.js";
-export { OllamaLocalExecutor }
+export { OllamaLocalExecutor } from "./ollama-local.js";
 export { CommandCodeExecutor } from "./commandcode.js";
 export { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 export { XiaomiMimoExecutor } from "./xiaomi-mimo.js";
