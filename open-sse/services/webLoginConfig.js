@@ -73,6 +73,26 @@ export const WEB_LOGIN_CONFIGS = {
       },
     ],
   },
+  "chatglm-web": {
+    loginUrl: "https://chatglm.cn/signin",
+    cookieDomain: ".chatglm.cn",
+    // chatglm_token carries the JWT access token; refresh_token for renewal.
+    tokenSources: [
+      { type: "cookie", name: "chatglm_token" },
+      { type: "cookie", name: "chatglm_refresh_token", optional: true },
+      { type: "cookie", name: "chatglm_user_id", optional: true },
+    ],
+  },
+  "xiaomimimo-web": {
+    loginUrl: "https://aistudio.xiaomimimo.com/",
+    cookieDomain: ".xiaomimimo.com",
+    // deviceId identifies the browser session; pass_ua/uLocale enrich the jar.
+    tokenSources: [
+      { type: "cookie", name: "deviceId" },
+      { type: "cookie", name: "pass_ua", optional: true },
+      { type: "cookie", name: "uLocale", optional: true },
+    ],
+  },
 };
 
 export function getWebLoginConfig(providerId) {

@@ -22,6 +22,8 @@ import { MuseWebExecutor } from "./muse-web.js";
 import { VeoAiFreeWebExecutor } from "./veoaifree-web.js";
 import { UcWebExecutor } from "./uc-web.js";
 import { ChatGptWebExecutor } from "./chatgpt-web.js";
+import { ChatGLMWebExecutor } from "./chatglm-web.js";
+import { XiaomiMiMoWebExecutor } from "./xiaomimimo-web.js";
 import { OllamaLocalExecutor }
 import { CommandCodeExecutor } from "./commandcode.js";
 import { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
@@ -66,8 +68,10 @@ const executors = {
   "veo-free": new VeoAiFreeWebExecutor(), // Alias
   "uc-web": new UcWebExecutor(),
   "chatgpt-web": new ChatGptWebExecutor(),
-  "ollama-local":
-  commandcode: new CommandCodeExecutor(),
+  "chatglm-web": new ChatGLMWebExecutor(),
+  "xiaomimimo-web": new XiaomiMiMoWebExecutor(),
+  "ollama-local": new OllamaLocalExecutor(),
+  commandcode: new CommandCodeExecutor()
   "xiaomi-tokenplan": new XiaomiTokenplanExecutor(),
   "xiaomi-mimo": new XiaomiMimoExecutor(),
   "mimo-free": new MimoFreeExecutor(),
@@ -125,6 +129,8 @@ export { DeepSeekWebExecutor } from "./deepseek-web.js";
 export { GeminiWebExecutor } from "./gemini-web.js";
 export { MuseWebExecutor } from "./muse-web.js";
 export { ChatGptWebExecutor } from "./chatgpt-web.js";
+export { ChatGLMWebExecutor } from "./chatglm-web.js";
+export { XiaomiMiMoWebExecutor } from "./xiaomimimo-web.js";
 export { OllamaLocalExecutor }
 export { CommandCodeExecutor } from "./commandcode.js";
 export { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";

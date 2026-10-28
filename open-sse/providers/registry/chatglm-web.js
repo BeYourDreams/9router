@@ -1,0 +1,35 @@
+export default {
+  id: "chatglm-web",
+  priority: 200,
+  alias: "chatglm-web",
+  aliases: [
+    "cgw",
+    "zhipu-web",
+  ],
+  uiAlias: "chatglm-web",
+  display: {
+    name: "ChatGLM Web (智谱清言)",
+    icon: "auto_awesome",
+    color: "#7A4FFF",
+    textIcon: "GLM",
+    website: "https://chatglm.cn",
+  },
+  category: "webCookie",
+  authType: "cookie",
+  serviceKinds: ["llm"],
+  authHint: "Paste your chatglm.cn cookie header containing chatglm_token (JWT) — or a full Playwright storage-state JSON",
+  transport: {
+    baseUrl: "https://chatglm.cn",
+    format: "openai",
+    authType: "cookie",
+  },
+  models: [
+    { id: "glm-5.3", name: "GLM-5.3 (Deep Thinking)", supportsReasoning: true },
+    { id: "glm-5.3-flash", name: "GLM-5.3-Flash (Fast)" },
+    { id: "glm-4.5", name: "GLM-4.5", supportsReasoning: true },
+    { id: "glm-4.5-flash", name: "GLM-4.5-Flash" },
+    { id: "glm-4.5-air", name: "GLM-4.5-Air" },
+    { id: "glm-4.5-airx", name: "GLM-4.5-AirX" },
+  ],
+  passthroughModels: true,
+};

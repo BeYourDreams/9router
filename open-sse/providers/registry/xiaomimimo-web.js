@@ -1,0 +1,35 @@
+export default {
+  id: "xiaomimimo-web",
+  priority: 210,
+  alias: "xiaomimimo-web",
+  aliases: [
+    "xmm-web",
+    "aistudio-web",
+  ],
+  uiAlias: "xiaomimimo-web",
+  display: {
+    name: "Xiaomi MiMo AI Studio Web",
+    icon: "smart_toy",
+    color: "#FF6900",
+    textIcon: "XMM",
+    website: "https://aistudio.xiaomimimo.com",
+  },
+  category: "webCookie",
+  authType: "cookie",
+  serviceKinds: ["llm"],
+  authHint: "Paste your aistudio.xiaomimimo.com cookie header containing deviceId — or a full Playwright storage-state JSON",
+  transport: {
+    baseUrl: "https://aistudio.xiaomimimo.com",
+    format: "openai",
+    authType: "cookie",
+  },
+  models: [
+    { id: "mimo-v2.6-pro", name: "MiMo V2.6 Pro", supportsReasoning: true },
+    { id: "mimo-v2.6-flash", name: "MiMo V2.6 Flash" },
+    { id: "mimo-v2.5-pro", name: "MiMo V2.5 Pro" },
+    { id: "mimo-v2.5", name: "MiMo V2.5" },
+    { id: "mimo-v2-omni", name: "MiMo V2 Omni" },
+    { id: "mimo-v2-flash", name: "MiMo V2 Flash" },
+  ],
+  passthroughModels: true,
+};

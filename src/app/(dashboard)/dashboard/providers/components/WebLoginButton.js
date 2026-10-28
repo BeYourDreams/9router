@@ -12,8 +12,9 @@ export const WEB_LOGIN_PROVIDERS = new Set([
   "chatgpt-web",
   "gemini-web",
   "muse-web",
-  "deepseek-web",
   "uc-web",
+  "chatglm-web",
+  "xiaomimimo-web",
 ]);
 
 const PROFILE_ICON_BY_NAME = {
