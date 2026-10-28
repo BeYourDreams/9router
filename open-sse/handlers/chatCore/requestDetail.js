@@ -2,6 +2,44 @@ import { saveRequestUsage, appendRequestLog, saveRequestDetail } from "@/lib/usa
 import { COLORS } from "../../utils/stream.js";
 import { canonicalizeUsage } from "../../utils/usageTracking.js";
 
+/**
+ * Parse tool_calls.arguments from JSON string to object for storage.
+ * OpenAI wire format requires arguments as string; this normalizes for DB.
+ */
+export function parseToolCallsForStorage(responseBody) {
+  if (!responseBody || typeof responseBody !== "object") return responseBody;
+  const cloned = JSON.parse(JSON.stringify(responseBody)); // Deep clone to avoid mutating wire response
+  
+  // OpenAI Chat Completions format
+  if (Array.isArray(cloned.choices)) {
+    for (const choice of cloned.choices) {
+      const msg = choice?.message;
+      if (msg && Array.isArray(msg.tool_calls)) {
+        for (const tc of msg.tool_calls) {
+          if (tc.function?.arguments && typeof tc.function.arguments === "string") {
+            try {
+              tc.function.arguments = JSON.parse(tc.function.arguments);
+            } catch { /* leave as string if invalid JSON */ }
+          }
+        }
+      }
+    }
+  }
+  
+  // OpenAI Responses API format
+  if (Array.isArray(cloned.output)) {
+    for (const item of cloned.output) {
+      if (item.type === "function_call" && typeof item.arguments === "string") {
+        try {
+          item.arguments = JSON.parse(item.arguments);
+        } catch { /* leave as string */ }
+      }
+    }
+  }
+  
+  return cloned;
+}
+
 const OPTIONAL_PARAMS = [
   "temperature", "top_p", "top_k",
   "max_tokens", "max_completion_tokens",
