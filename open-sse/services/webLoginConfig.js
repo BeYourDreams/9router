@@ -41,8 +41,6 @@ export const WEB_LOGIN_CONFIGS = {
       { type: "cookie", name: "hatch_native_auth_device", optional: true },
     ],
   },
-  // deepseek-web stores its credential in localStorage, not a cookie.
-  // Stored as JSON {"value":"<base64-token>","__version":"0"} or raw token.
   "deepseek-web": {
     loginUrl: "https://chat.deepseek.com/sign_in",
     cookieDomain: ".deepseek.com",

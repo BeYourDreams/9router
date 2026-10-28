@@ -291,5 +291,4 @@ export default [
   p146,
   p147,
   p151,
-  p152,
 ];
