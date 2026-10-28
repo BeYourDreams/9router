@@ -120,7 +120,7 @@ export default function APIPageClient({ machineId }) {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [tunnelEnabled, tsEnabled, tunnelReachable, tsReachable]);
+  }, [tunnelEnabled, tsEnabled]);
 
   // Browser-side periodic ping: probes tunnel/tailscale URLs directly so UI stays
   // "reachable" even when backend DNS (1.1.1.1) hiccups on *.ts.net or *.trycloudflare.com.
@@ -153,7 +153,7 @@ export default function APIPageClient({ machineId }) {
     if (tunnelHealthy && tsHealthy) return;
     const id = setInterval(probeBoth, CLIENT_PING_FAST_MS);
     return () => clearInterval(id);
-  }, [tunnelEnabled, tunnelUrl, tunnelPublicUrl, tsEnabled, tsUrl, tunnelReachable, tsReachable]);
+  }, [tunnelEnabled, tunnelUrl, tunnelPublicUrl, tsEnabled, tsUrl]);
 
   // Client-side reachable only (server no longer probes; watchdog handles backend health).
   // Miss-debounce: only flip to false after N consecutive misses.
