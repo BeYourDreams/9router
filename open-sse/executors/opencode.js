@@ -93,14 +93,19 @@ export function generateSessionId(timestamp = Date.now()) {
 // is far from the request with a 429 FreeUsageLimitError. Mint translated ids from
 // the current clock, then cache per hint + rotation epoch so a conversation keeps
 // one session across turns instead of getting a fresh one every request.
+//
+// Prefix invariance: the id — and therefore its 12-hex prefix — must not change
+// mid-conversation. A new id is a new upstream prompt cache, so any churn here
+// shows up as a cache miss on every turn. Egress (IP/proxy) is deliberately NOT
+// part of the key; a 429 rotates the session via the epoch instead.
 const translatedOpencodeSessions = new Map();
 const MAX_TRANSLATED_SESSIONS = 1000;
 
-export function translateSessionId(sessionId, clientTool = "", egressId = "", epoch = 0) {
+export function translateSessionId(sessionId, clientTool = "", epoch = 0) {
   if (typeof sessionId === "string" && OPENCODE_SESSION_RE.test(sessionId.trim())) {
     return sessionId.trim();
   }
-  const key = `${clientTool || "generic"}\0${egressId || "-"}\0${epoch}\0${sessionId || ""}`;
+  const key = `${clientTool || "generic"}\0${epoch}\0${sessionId || ""}`;
   const existing = translatedOpencodeSessions.get(key);
   if (existing) {
     existing.lastUsed = Date.now();
@@ -175,17 +180,13 @@ function identityKey(credentials) {
   return "opencode:default";
 }
 
-function sessionScopeKey(credentials, egressId) {
-  return `${identityKey(credentials)}\0${egressId || DIRECT_EGRESS_ID}`;
+function sessionEpoch(credentials) {
+  return opencodeSessionEpochs.get(identityKey(credentials))?.epoch || 0;
 }
 
-function sessionEpoch(credentials, egressId) {
-  return opencodeSessionEpochs.get(sessionScopeKey(credentials, egressId))?.epoch || 0;
-}
-
-function rotateSession(credentials, egressId) {
+function rotateSession(credentials) {
   if (nativeSession(credentials?.rawHeaders)) return false;
-  const key = sessionScopeKey(credentials, egressId);
+  const key = identityKey(credentials);
   const current = opencodeSessionEpochs.get(key);
   if (opencodeSessionEpochs.size >= MAX_STABLE_SESSIONS && !current) {
     opencodeSessionEpochs.delete(opencodeSessionEpochs.keys().next().value);
@@ -195,8 +196,8 @@ function rotateSession(credentials, egressId) {
   return true;
 }
 
-export function stableSessionId(credentials, egressId = "") {
-  const key = sessionScopeKey(credentials, egressId);
+export function stableSessionId(credentials) {
+  const key = identityKey(credentials);
   const existing = stableOpencodeSessions.get(key);
   if (existing) {
     existing.lastUsed = Date.now();
@@ -212,7 +213,7 @@ export function stableSessionId(credentials, egressId = "") {
   return sessionId;
 }
 
-function bodyHasSessionHints(body) {
+function bodyHasExplicitHint(body) {
   try {
     if (!body || typeof body !== "object") return false;
     if (typeof body.session_id === "string" && body.session_id.trim()) return true;
@@ -220,14 +221,17 @@ function bodyHasSessionHints(body) {
     if (typeof body.prompt_cache_key === "string" && body.prompt_cache_key.trim()) return true;
     if (body.metadata && typeof body.metadata.user_id === "string" && body.metadata.user_id.trim()) return true;
     if (body.request && body.request.sessionId != null && String(body.request.sessionId) !== "") return true;
-    return hasAssistantTurns(body);
+    return false;
   } catch {
     return false;
   }
 }
 
 // A body with real assistant output is a continuation of an existing
-// conversation; a body with only user turns starts a new one.
+// conversation; a body with only user turns starts a new one. Assistant output
+// of ANY shape counts — agent tool loops carry tool_use/tool_calls blocks and no
+// text, and judging on text alone re-minted the session on every turn (cache miss
+// per turn).
 function hasAssistantTurns(body) {
   try {
     const arr = Array.isArray(body?.messages)
@@ -236,15 +240,15 @@ function hasAssistantTurns(body) {
         ? body.input
         : null;
     if (!arr) return false;
-    let assistantText = "";
     for (const msg of arr) {
       if (msg?.role !== "assistant") continue;
+      if (Array.isArray(msg.tool_calls) && msg.tool_calls.length) return true;
       const content = msg.content;
-      if (typeof content === "string") assistantText += content;
-      else if (Array.isArray(content)) {
-        for (const part of content) assistantText += part?.text || part?.output || "";
+      if (typeof content === "string") {
+        if (content.trim()) return true;
+      } else if (Array.isArray(content) && content.length) {
+        return true;
       }
-      if (assistantText.length >= 50) return true;
     }
     return false;
   } catch {
@@ -266,7 +270,7 @@ function isMessagesModel(model) {
   return MESSAGES_MODELS.has(baseModelId(model));
 }
 
-function resolveOpencodeSession(body, credentials, providerSessionId, clientTool, egressId = "") {
+function resolveOpencodeSession(body, credentials, providerSessionId, clientTool) {
   const headers = credentials?.rawHeaders || {};
   const native = nativeSession(headers);
   if (native) return native;
@@ -283,15 +287,16 @@ function resolveOpencodeSession(body, credentials, providerSessionId, clientTool
     ? null
     : providerSessionId;
   const hinted = incoming || normalizeSession(seed);
-  if (hinted) return translateSessionId(hinted, clientTool, egressId, sessionEpoch(credentials, egressId));
+  if (hinted) return translateSessionId(hinted, clientTool, sessionEpoch(credentials));
 
   // For no-auth free tier, the shared "noauth" connectionId would give every
   // conversation the same upstream session (burns quota → 429). Only use the
   // session manager when the client provides an explicit session hint.
   const isNoAuth = credentials?.id === "noauth" || credentials?.accessToken === "public";
-  const hasClientHint = bodyHasSessionHints(body);
+  const explicitHint = bodyHasExplicitHint(body);
+  const hasClientHint = explicitHint || hasAssistantTurns(body);
 
-  if (!isNoAuth || hasClientHint) {
+  if (!isNoAuth || explicitHint) {
     if (credentials?.connectionId || hasClientHint) {
       let viaManager = null;
       try {
@@ -311,7 +316,7 @@ function resolveOpencodeSession(body, credentials, providerSessionId, clientTool
       } catch {
         viaManager = null;
       }
-      if (viaManager) return translateSessionId(viaManager, clientTool, egressId, sessionEpoch(credentials, egressId));
+      if (viaManager) return translateSessionId(viaManager, clientTool, sessionEpoch(credentials));
     }
   }
 
@@ -322,8 +327,8 @@ function resolveOpencodeSession(body, credentials, providerSessionId, clientTool
   // conversation and keep it only while assistant turns show it is still in
   // flight. Drop the cached entry instead of bumping the epoch so hinted
   // conversations on the same scope keep their session.
-  if (!hasAssistantTurns(body)) stableOpencodeSessions.delete(sessionScopeKey(credentials, egressId));
-  return stableSessionId(credentials, egressId);
+  if (!hasAssistantTurns(body)) stableOpencodeSessions.delete(identityKey(credentials));
+  return stableSessionId(credentials);
 }
 
 function normalizeResponsesTools(body) {
@@ -447,9 +452,9 @@ export class OpenCodeExecutor extends BaseExecutor {
     super("opencode", PROVIDERS.opencode);
   }
 
-  prepareRequestCredentials({ body, credentials, providerSessionId, clientTool, egressId } = {}) {
+  prepareRequestCredentials({ body, credentials, providerSessionId, clientTool } = {}) {
     const sourceCredentials = credentials || {};
-    const session = resolveOpencodeSession(body, sourceCredentials, providerSessionId, clientTool, egressId);
+    const session = resolveOpencodeSession(body, sourceCredentials, providerSessionId, clientTool);
 
     return {
       ...sourceCredentials,
@@ -529,6 +534,7 @@ export class OpenCodeExecutor extends BaseExecutor {
     let retryBody = cloneRequestBody(args.body);
     let lastPrepared = null;
     let lastResult = null;
+    let lastRotated = false;
 
     for (const proxyOptions of candidates) {
       let egress;
@@ -559,7 +565,7 @@ export class OpenCodeExecutor extends BaseExecutor {
         continue;
       }
 
-      const prepared = this.prepareRequestCredentials({ ...args, body: retryBody, egressId: egress.id });
+      const prepared = this.prepareRequestCredentials({ ...args, body: retryBody });
       lastPrepared = prepared;
 
       const result = await super.execute({ ...args, credentials: prepared, proxyOptions });
@@ -572,10 +578,24 @@ export class OpenCodeExecutor extends BaseExecutor {
       markEgressCooling(egress, retryAfterMs);
 
       // Rotate session for next attempt (free quota is per session)
-      rotateSession(prepared, egress.id);
+      const rotated = rotateSession(prepared);
+      lastRotated = rotated;
     }
 
-    // Exhausted all candidates
+    // Exhausted all candidates. If we rotated the session on a 429, retry the
+    // first egress once more with the fresh session — matches the prefix-
+    // invariance convention: one conversation keeps one session until quota 429.
+    if (lastResult?.response?.status === 429 && lastPrepared && lastRotated) {
+      log?.debug?.("EGRESS", `Retrying first egress with rotated session`);
+      // Re-prepare credentials to pick up the rotated session (new epoch)
+      const retryPrepared = this.prepareRequestCredentials({ ...args, body: retryBody });
+      const retryResult = await super.execute({
+        ...args,
+        credentials: retryPrepared,
+        proxyOptions: null,
+      });
+      if (retryResult?.response?.ok) return retryResult;
+    }
     log?.warn?.("EGRESS", `All egress candidates exhausted, returning last 429`);
     return lastResult ?? {
       response: syntheticRateLimitResponse(EGRESS_CONFIG.defaultCooldownMs),
