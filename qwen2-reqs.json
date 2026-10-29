@@ -1,0 +1,146 @@
+[
+  {
+    "url": "https://chat2-api.qianwen.com/api/v1/model/list?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asia%2FShanghai&wv=4.12.0&tq=SD&ve=4.12.0",
+    "method": "GET",
+    "post": "",
+    "hdr": {
+      "x-platform": "pc_tongyi",
+      "sec-ch-ua-platform": "\"Windows\"",
+      "x-xsrf-token": "f175e5e8-d99d-4ddb-a270-5f11cc06d6e1",
+      "referer": "https://www.qianwen.com/",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\", \"HeadlessChrome\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "content-type": "application/json",
+      "x-deviceid": "0117f23c-acd2-bf0c-0bb6-b0c33cebd264"
+    }
+  },
+  {
+    "url": "https://chat2-api.qianwen.com/api/v1/session/group/list?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asia%2FShanghai&wv=4.12.0&tq=SD&ve=4.12.0",
+    "method": "POST",
+    "post": "{}",
+    "hdr": {
+      "x-platform": "pc_tongyi",
+      "sec-ch-ua-platform": "\"Windows\"",
+      "x-xsrf-token": "f175e5e8-d99d-4ddb-a270-5f11cc06d6e1",
+      "referer": "https://www.qianwen.com/",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\", \"HeadlessChrome\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "content-type": "application/json",
+      "x-deviceid": "0117f23c-acd2-bf0c-0bb6-b0c33cebd264"
+    }
+  },
+  {
+    "url": "https://chat2-api.qianwen.com/api/v1/session/top/list?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asia%2FShanghai&wv=4.12.0&tq=SD&ve=4.12.0",
+    "method": "POST",
+    "post": "{\"sort_field\":\"modifiedTime\",\"need_show_chat_list\":true}",
+    "hdr": {
+      "x-platform": "pc_tongyi",
+      "sec-ch-ua-platform": "\"Windows\"",
+      "x-xsrf-token": "f175e5e8-d99d-4ddb-a270-5f11cc06d6e1",
+      "referer": "https://www.qianwen.com/",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\", \"HeadlessChrome\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "content-type": "application/json",
+      "x-deviceid": "0117f23c-acd2-bf0c-0bb6-b0c33cebd264"
+    }
+  },
+  {
+    "url": "https://chat2-api.qianwen.com/api/v1/growth/benefit/query?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asia%2FShanghai&wv=4.12.0&tq=SD&ve=4.12.0",
+    "method": "POST",
+    "post": "{\"biz_id\":\"ai_qwen\",\"benefit_codes\":[\"MOS_TASK\"]}",
+    "hdr": {
+      "x-platform": "pc_tongyi",
+      "sec-ch-ua-platform": "\"Windows\"",
+      "x-xsrf-token": "f175e5e8-d99d-4ddb-a270-5f11cc06d6e1",
+      "referer": "https://www.qianwen.com/",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\", \"HeadlessChrome\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "content-type": "application/json",
+      "x-deviceid": "0117f23c-acd2-bf0c-0bb6-b0c33cebd264"
+    }
+  },
+  {
+    "url": "https://chat2-api.qianwen.com/api/v2/session/page/list?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asia%2FShanghai&wv=4.12.0&tq=SD&ve=4.12.0",
+    "method": "POST",
+    "post": "{\"limit\":50,\"next_token\":\"\",\"sort_field\":\"modifiedTime\",\"need_filter_tag\":true}",
+    "hdr": {
+      "x-platform": "pc_tongyi",
+      "sec-ch-ua-platform": "\"Windows\"",
+      "x-xsrf-token": "f175e5e8-d99d-4ddb-a270-5f11cc06d6e1",
+      "referer": "https://www.qianwen.com/",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\", \"HeadlessChrome\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "content-type": "application/json",
+      "x-deviceid": "0117f23c-acd2-bf0c-0bb6-b0c33cebd264"
+    }
+  },
+  {
+    "url": "https://qwen-agent-api.qianwen.com/api/v1/agent/task/scheduled/list?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asia%2FShanghai&wv=4.12.0&tq=SD&ve=4.12.0",
+    "method": "POST",
+    "post": "{\"pageSize\":40}",
+    "hdr": {
+      "x-platform": "pc_tongyi",
+      "sec-ch-ua-platform": "\"Windows\"",
+      "x-xsrf-token": "f175e5e8-d99d-4ddb-a270-5f11cc06d6e1",
+      "referer": "https://www.qianwen.com/",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\", \"HeadlessChrome\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "content-type": "application/json",
+      "x-deviceid": "0117f23c-acd2-bf0c-0bb6-b0c33cebd264"
+    }
+  },
+  {
+    "url": "https://qwen-agent-api.qianwen.com/api/v1/agent/task/scheduled/sidebar?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asia%2FShanghai&wv=4.12.0&tq=SD&ve=4.12.0",
+    "method": "POST",
+    "post": "{\"size\":20}",
+    "hdr": {
+      "x-platform": "pc_tongyi",
+      "sec-ch-ua-platform": "\"Windows\"",
+      "x-xsrf-token": "f175e5e8-d99d-4ddb-a270-5f11cc06d6e1",
+      "referer": "https://www.qianwen.com/",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\", \"HeadlessChrome\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "content-type": "application/json",
+      "x-deviceid": "0117f23c-acd2-bf0c-0bb6-b0c33cebd264"
+    }
+  },
+  {
+    "url": "https://qwen-agent-api.qianwen.com/api/v1/agent/task/scheduled/list?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asia%2FShanghai&wv=4.12.0&tq=SD&ve=4.12.0",
+    "method": "POST",
+    "post": "{\"pageSize\":40}",
+    "hdr": {
+      "x-platform": "pc_tongyi",
+      "sec-ch-ua-platform": "\"Windows\"",
+      "x-xsrf-token": "f175e5e8-d99d-4ddb-a270-5f11cc06d6e1",
+      "referer": "https://www.qianwen.com/",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\", \"HeadlessChrome\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "content-type": "application/json",
+      "x-deviceid": "0117f23c-acd2-bf0c-0bb6-b0c33cebd264"
+    }
+  },
+  {
+    "url": "https://qwen-agent-api.qianwen.com/api/v1/agent/task/scheduled/sidebar?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asia%2FShanghai&wv=4.12.0&tq=SD&ve=4.12.0",
+    "method": "POST",
+    "post": "{\"size\":20}",
+    "hdr": {
+      "x-platform": "pc_tongyi",
+      "sec-ch-ua-platform": "\"Windows\"",
+      "x-xsrf-token": "f175e5e8-d99d-4ddb-a270-5f11cc06d6e1",
+      "referer": "https://www.qianwen.com/",
+      "sec-ch-ua": "\"Not:A-Brand\";v=\"8\", \"Chromium\";v=\"156\", \"HeadlessChrome\";v=\"156\"",
+      "sec-ch-ua-mobile": "?0",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "content-type": "application/json",
+      "x-deviceid": "0117f23c-acd2-bf0c-0bb6-b0c33cebd264"
+    }
+  }
+]

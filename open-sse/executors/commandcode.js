@@ -1,14 +1,16 @@
-import { randomUUID } from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { buildCommandCodeHeaders } from "../shared/commandCodeHeaders.js";
 import { commandCodeToOpenAIResponse } from "../translator/response/commandcode-to-openai.js";
 import { SSE_DONE } from "../utils/sseConstants.js";
+import { resolveConversationId } from "../shared/conversationId.js";
 
 /**
  * CommandCodeExecutor — talks to https://api.commandcode.ai/alpha/generate
  *
  * Auth: Bearer <user_xxx> API key (stored as the connection's apiKey).
- * Adds the per-request `x-session-id` header expected by CommandCode upstream.
+ * Sends the official CLI's header set (shared/commandCodeHeaders.js); `x-session-id`
+ * matches the body's conversation-stable threadId.
  *
  * Upstream returns AI SDK v5 NDJSON (one JSON event per line, no `data:` prefix).
  * We translate each event to an OpenAI chat.completion.chunk and emit it as SSE so
@@ -25,18 +27,16 @@ export class CommandCodeExecutor extends BaseExecutor {
     return body;
   }
 
-  buildHeaders(credentials, stream = true) {
-    const headers = {
-      "Content-Type": "application/json",
-      ...(this.config.headers || {}),
-      "x-session-id": randomUUID(),
-    };
-
-    const token = credentials?.apiKey || credentials?.accessToken;
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-
-    if (stream) headers["Accept"] = "text/event-stream";
-    return headers;
+  buildHeaders(credentials, stream = true, url, model, transformedBody) {
+    // buildCommandCodeHeaders falls back to randomUUID() when handed no session,
+    // which silently turns every such call into a cold-cache request. Always
+    // derive one from the conversation so no caller can hit that path.
+    return buildCommandCodeHeaders({
+      apiKey: credentials?.apiKey || credentials?.accessToken,
+      sessionId: transformedBody?.threadId
+        || resolveConversationId({ credentials, body: transformedBody, scope: "commandcode" }),
+      accept: stream ? "text/event-stream" : null,
+    });
   }
 
   async execute(opts) {

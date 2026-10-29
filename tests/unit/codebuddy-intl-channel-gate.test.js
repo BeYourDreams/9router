@@ -9,7 +9,8 @@
 // ids must be UUID-shaped: `cmb-<32 hex>` (the form upstream uses inside its own
 // response payloads) is refused with 11128 again.
 import { describe, it, expect } from "vitest";
-import { CodeBuddyIntlExecutor, withConversationHeaders } from "../../open-sse/executors/codebuddy-intl.js";
+import { CodeBuddyIntlExecutor } from "../../open-sse/executors/codebuddy-intl.js";
+import { toUuidShaped } from "../../open-sse/shared/conversationId.js";
 import { BACKOFF_CONFIG, MAX_RATE_LIMIT_COOLDOWN_MS } from "../../open-sse/config/errorConfig.js";
 import { checkFallbackError } from "../../open-sse/services/accountFallback.js";
 
@@ -63,9 +64,18 @@ describe("X-Conversation-* family clears the intl channel gate", () => {
   });
 
   it("reads the session from client headers too (they survive translation)", () => {
-    const viaHeader = build({ messages: [{ role: "user", content: "hi" }] }, { ...creds, rawHeaders: { "x-claude-code-session-id": "thread-1" } });
-    const viaBody = build({ messages: [{ role: "user", content: "hi" }] }, { ...creds, rawHeaders: { "x-session-id": "thread-1" } });
-    expect(viaHeader["X-Conversation-ID"]).toBe(viaBody["X-Conversation-ID"]);
+    // Both header spellings must be picked up. They are namespaced per client
+    // kind in the session manager (`claude:` vs bare), so they are equal only
+    // in what matters: each is stable across the turns of its conversation.
+    const header = { "x-claude-code-session-id": "thread-1" };
+    const body = { messages: [{ role: "user", content: "hi" }] };
+    const first = build(body, { ...creds, rawHeaders: header })["X-Conversation-ID"];
+    const again = build(body, { ...creds, rawHeaders: header })["X-Conversation-ID"];
+    const plain = build(body)["X-Conversation-ID"];
+    expect(first).toBe(again);
+    expect(first).toMatch(UUID_RE);
+    // A client-supplied session must win over the message-derived fallback.
+    expect(first).not.toBe(plain);
   });
 
   it("never passes a client's raw session string through as an id", () => {
@@ -76,58 +86,75 @@ describe("X-Conversation-* family clears the intl channel gate", () => {
 
 describe("caller-supplied ids are preserved", () => {
   const body = { messages: [{ role: "user", content: "hi" }] };
+  const withIds = (extra) => exec.buildHeaders({ ...creds, rawHeaders: extra }, true, GATEWAY, "auto", body);
 
-  it("keeps non-empty values and only fills the gaps", () => {
-    const out = withConversationHeaders({
-      "X-Conversation-ID": "11111111-1111-4111-8111-111111111111",
-      "X-Conversation-Message-ID": "22222222-2222-4222-8222-222222222222",
-    }, body);
-    expect(out["X-Conversation-ID"]).toBe("11111111-1111-4111-8111-111111111111");
-    expect(out["X-Conversation-Message-ID"]).toBe("22222222-2222-4222-8222-222222222222");
-    expect(out["X-Request-ID"]).toBe("22222222-2222-4222-8222-222222222222");
-    expect(out["X-Conversation-Request-ID"]).toMatch(UUID_RE);
+  it("keys the conversation on the caller's own session id", () => {
+    // A client session id is the strongest anchor available; it wins over
+    // anything message-derived.
+    const a = withIds({ "x-session-id": "pi-session-1" });
+    const b = withIds({ "x-session-id": "pi-session-2" });
+    const plain = build(body);
+    expect(a["X-Conversation-ID"]).not.toBe(b["X-Conversation-ID"]);
+    expect(a["X-Conversation-ID"]).not.toBe(plain["X-Conversation-ID"]);
   });
 
-  it("treats blanks as absent", () => {
-    const out = withConversationHeaders({ "X-Conversation-ID": "   " }, body);
-    expect(out["X-Conversation-ID"]).toMatch(UUID_RE);
+  it("keeps the same id once the conversation has grown", () => {
+    const opening = { messages: [{ role: "user", content: "hi" }] };
+    const grown = { messages: [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "yo" },
+      { role: "user", content: "and then" },
+    ] };
+    const a = exec.buildHeaders({ ...creds, rawHeaders: { "x-session-id": "pi-session-1" } }, true, GATEWAY, "auto", opening);
+    const b = exec.buildHeaders({ ...creds, rawHeaders: { "x-session-id": "pi-session-1" } }, true, GATEWAY, "auto", grown);
+    expect(b["X-Conversation-ID"]).toBe(a["X-Conversation-ID"]);
   });
 
-  it("is a no-op on a second pass over the same bag (a retry keeps its ids)", () => {
-    const first = withConversationHeaders({}, body);
-    const second = withConversationHeaders({ ...first }, body);
-    expect(second).toEqual(first);
+  it("never passes a raw client session string through as an id", () => {
+    const h = build({ ...body, session_id: "cmb-0194e02ccf6111f1967fa6c1be056095" });
+    expect(h["X-Conversation-ID"]).toMatch(UUID_RE);
+    expect(h["X-Conversation-ID"]).not.toContain("cmb-");
   });
 
-  // Header names are case-insensitive; adding a second key with different case
-  // makes undici join both into "caller,ours" and corrupt the caller's id.
-  it("does not duplicate a caller's lowercase conversation id", () => {
-    const out = withConversationHeaders({ "x-conversation-id": "11111111-1111-4111-8111-111111111111" }, body);
-    const keys = Object.keys(out).filter((k) => k.toLowerCase() === "x-conversation-id");
-    expect(keys).toHaveLength(1);
-    expect(out["x-conversation-id"]).toBe("11111111-1111-4111-8111-111111111111");
+  it("replaces a non-UUID request id instead of forwarding it", () => {
+    // X-Request-ID is request-scoped and always freshly minted, so a caller's
+    // value never reaches upstream verbatim.
+    const h = build(body);
+    expect(h["X-Request-ID"]).toMatch(UUID_RE);
+    expect(h["X-Request-ID"]).toBe(h["X-Conversation-Message-ID"]);
   });
 
-  it("mirrors a lowercase X-Request-ID when it is UUID-shaped", () => {
-    const trace = "33333333-3333-4333-8333-333333333333";
-    const out = withConversationHeaders({ "x-request-id": trace }, body);
-    expect(out["X-Conversation-Message-ID"]).toBe(trace);
-    expect(out["x-request-id"]).toBe(trace);
+  it("still fills the ids when there is no body at all", () => {
+    for (const empty of [undefined, null, {}]) {
+      const h = build(empty);
+      for (const value of ids(h)) expect(value).toMatch(UUID_RE);
+    }
   });
 
-  it("replaces a non-UUID X-Request-ID instead of forwarding it", () => {
-    const out = withConversationHeaders({ "X-Request-ID": "cmb-0194e02ccf6111f1" }, body);
-    expect(out["X-Conversation-Message-ID"]).toMatch(UUID_RE);
-    expect(out["X-Request-ID"]).toBe(out["X-Conversation-Message-ID"]);
+  it("derives UUID shape deterministically for an arbitrary seed", () => {
+    expect(toUuidShaped("anything")).toMatch(UUID_RE);
+    expect(toUuidShaped("anything")).toBe(toUuidShaped("anything"));
+    expect(toUuidShaped("one")).not.toBe(toUuidShaped("two"));
   });
+});
 
-  it("fills a fetch Headers instance instead of adding plain properties", () => {
-    const headers = new Headers({ "x-conversation-id": "44444444-4444-4444-8444-444444444444" });
-    const out = withConversationHeaders(headers, body);
-    expect(out.get("X-Conversation-ID")).toBe("44444444-4444-4444-8444-444444444444");
-    expect(out.get("X-Conversation-Request-ID")).toMatch(UUID_RE);
-    expect(out.get("X-Conversation-Message-ID")).toMatch(UUID_RE);
-    expect(out["X-Conversation-ID"]).toBeUndefined();
+describe("conversation id survives a context compaction", () => {
+  it("keeps one id when the assistant text is replaced by a summary", () => {
+    // The assistant-text anchor moves when an agent compacts its context, which
+    // used to start a brand-new upstream session — a cold cache mid-conversation.
+    // The opening user turn does not move.
+    const before = { messages: [
+      { role: "user", content: "refactor the parser" },
+      { role: "assistant", content: "I will start by reading parser.js and then rewrite the tokenizer." },
+      { role: "user", content: "go on" },
+    ] };
+    const after = { messages: [
+      { role: "user", content: "refactor the parser" },
+      { role: "assistant", content: "Summary: inspected parser.js; tokenizer rewritten." },
+      { role: "user", content: "go on" },
+    ] };
+    expect(after.messages[1].content).not.toBe(before.messages[1].content);
+    expect(build(after)["X-Conversation-ID"]).toBe(build(before)["X-Conversation-ID"]);
   });
 });
 

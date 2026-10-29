@@ -14,6 +14,7 @@
 import { randomUUID } from "node:crypto";
 import { fetchSentinelHeaders } from "./sentinel.js";
 import { prepareToolMessages } from "../../translator/webTools.js";
+import { rememberUpstreamConversationId, recallUpstreamConversationId } from "../../shared/conversationId.js";
 const SSE_DEADLINE_MS = 120000;
 const POLL_INTERVAL_MS = 1500;
 const POLL_TIMEOUT_MS = 180000;
@@ -160,7 +161,7 @@ function finishedAssistantText(document) {
  * @param {object} options.body - OpenAI chat body ({ messages, tools, ... })
  * @returns {Promise<{text: string, hasTools: boolean, requestedTools: Array}>}
  */
-export async function runChatGptWebHttpTurn({ baseUrl, accessToken, cookie, userAgent, body, signal, log }) {
+export async function runChatGptWebHttpTurn({ baseUrl, accessToken, cookie, userAgent, body, credentials, signal, log }) {
   if (!accessToken) throw Object.assign(new Error("ChatGPT session has no access token"), { status: 401 });
   if (signal?.aborted) throw new Error("Request aborted");
 
@@ -180,11 +181,18 @@ export async function runChatGptWebHttpTurn({ baseUrl, accessToken, cookie, user
     "Content-Type": "application/json",
   };
 
+  // ChatGPT mints the conversation id itself and returns it in the SSE; nothing
+  // about it is derivable client-side. Resume the remembered one, or every turn
+  // opens yet another empty conversation and all prior context is lost.
+  const identity = { credentials, body, scope: "chatgpt-web" };
+  const resumedConversationId = recallUpstreamConversationId(identity);
+
   const prepare = await fetchWithTimeout(`${baseUrl}/backend-api/f/conversation/prepare`, {
     method: "POST",
     headers: { ...headers, Accept: "application/json" },
     body: JSON.stringify({
       action: "next",
+      ...(resumedConversationId ? { conversation_id: resumedConversationId } : {}),
       parent_message_id: randomUUID(),
       model: "auto",
       client_prepare_state: "success",
@@ -235,6 +243,7 @@ export async function runChatGptWebHttpTurn({ baseUrl, accessToken, cookie, user
       supported_encodings: ["v1"],
       client_contextual_info: { app_name: "chatgpt.com" },
       force_parallel_switch: "auto",
+      ...(resumedConversationId ? { conversation_id: resumedConversationId } : {}),
     }),
   }, SSE_DEADLINE_MS + 15000, signal);
   if (!conversation.ok) {
@@ -246,6 +255,8 @@ export async function runChatGptWebHttpTurn({ baseUrl, accessToken, cookie, user
   if (!conversationId) {
     throw Object.assign(new Error("ChatGPT conversation produced no conversation id"), { status: 502 });
   }
+  // Remember it so the NEXT turn resumes this same conversation.
+  rememberUpstreamConversationId(identity, conversationId);
 
   // The stream ends long before the turn does — wait for is_complete or the
   // tool batch gets parsed half-finished.

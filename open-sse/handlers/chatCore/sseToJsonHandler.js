@@ -90,22 +90,26 @@ function chatCompletionToResponses(responseBody, customToolNames = null) {
     });
   }
 
-  const usage = responseBody.usage || {};
-  return {
-    id: `resp_${responseBody.id || ""}`.replace(/^resp_chatcmpl-/, "resp_"),
-    object: "response",
-    created_at: responseBody.created || Math.floor(Date.now() / 1000),
-    model: responseBody.model || "unknown",
-    status: "completed",
-    background: false,
-    error: null,
-    output,
-    usage: {
-      input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
-      output_tokens: usage.completion_tokens || usage.output_tokens || 0,
-      total_tokens: usage.total_tokens || (usage.prompt_tokens || 0) + (usage.completion_tokens || 0),
-    },
-  };
+const usage = jsonResponse.usage || {};
+      const cacheRead = usage.cache_read_input_tokens || usage.cached_tokens || usage.prompt_tokens_details?.cached_tokens || 0;
+      const cacheCreate = usage.cache_creation_input_tokens || 0;
+      return {
+        id: `resp_${responseBody.id || ""}`.replace(/^resp_chatcmpl-/, "resp_"),
+        object: "response",
+        created_at: responseBody.created || Math.floor(Date.now() / 1000),
+        model: responseBody.model || "unknown",
+        status: "completed",
+        background: false,
+        error: null,
+        output,
+        usage: {
+          input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
+          output_tokens: usage.completion_tokens || usage.output_tokens || 0,
+          total_tokens: usage.total_tokens || (usage.prompt_tokens || 0) + (usage.completion_tokens || 0),
+          ...(cacheRead > 0 ? { prompt_tokens_details: { cached_tokens: cacheRead } } : {}),
+          ...(cacheCreate > 0 ? { prompt_tokens_details: { ...usage.prompt_tokens_details, cache_creation_tokens: cacheCreate } } : {}),
+        },
+      };
 }
 
 /**

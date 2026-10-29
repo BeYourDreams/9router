@@ -126,6 +126,15 @@ http.createServer = (...args) => {
 };
 
 if (require.main === module) {
+  // Default port if not provided via --port (Windows doesn't expand ${PORT:-20127})
+  // Standalone server.js reads from process.env.PORT, not process.argv
+  const portArg = process.argv.find((a, i) => a === "--port" && process.argv[i + 1]);
+  if (!portArg && !process.env.PORT) {
+    process.env.PORT = "20127";
+  } else if (portArg) {
+    process.env.PORT = process.argv[process.argv.indexOf("--port") + 1];
+  }
+
   const standalone = path.join(__dirname, "server.js");
   if (fs.existsSync(standalone)) {
     require(standalone);

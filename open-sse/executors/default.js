@@ -9,6 +9,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 import { extractClaudeSessionIdFromUserId } from "../utils/claudeCloaking.js";
+import { resolveConversationId } from "../shared/conversationId.js";
 
 // Auth header descriptors — derived from registry transport.auth, fallback to hardcoded defaults.
 const BEARER = { combined: true, header: "Authorization", scheme: "bearer" };
@@ -40,15 +41,43 @@ function applyAuth(headers, desc, credentials) {
 
 // Provider-specific header quirks kept as small hooks (not pure auth).
 const HEADER_HOOKS = {
+  // CodeBuddy (CN + intl): the gateway runs a channel check per request and
+  // rejects anything that does not carry the conversation/request identifiers
+  // the official plugin sends. Without them upstream answers
+  // 400 {"code":11128,"msg":"request illegal"} with
+  // "This call failed channel verification, possibly because it was not sent
+  // from an official client" — the request never reaches the model.
+  // The same request WITH these headers passes channel verification and gets
+  // as far as the real rate limiter (429 / 6004).
+  //
+  // X-Conversation-ID is CONVERSATION-scoped: upstream keys its prompt cache on
+  // it, so minting a fresh one per request (as this hook used to) made every
+  // turn a cold cache miss. The three request ids stay per-request so a retry
+  // is not deduped upstream. See shared/conversationId.js.
+  codebuddyHeaders: (h, credentials, body, provider) => {
+    const requestId = randomUUID();
+    h["X-Request-ID"] = requestId;
+    h["X-Conversation-ID"] = resolveConversationId({
+      credentials,
+      body,
+      scope: provider || "codebuddy",
+    });
+    h["X-Conversation-Request-ID"] = requestId;
+    h["X-Conversation-Message-ID"] = requestId;
+  },
   // Stable device_id from OAuth connection (CLIProxyAPI KimiTokenStorage.DeviceID)
   kimiHeaders: (h, c) => Object.assign(h, buildKimiHeaders(c?.providerSpecificData?.deviceId)),
   // MiniMax Code (mcode): the placeholder x-api-key rides every request next
   // to the Bearer token, plus per-request session/timezone headers. Static
   // teammates (User-Agent, X-Mavis-Agent-Id) live in the registry transport.
-  minimaxHeaders: (h) => {
+  minimaxHeaders: (h, credentials, body, provider) => {
     h["x-api-key"] = "sk-xxx";
     h["X-Mavis-Timezone-Offset"] = String(new Date().getTimezoneOffset() * -60);
-    if (!h["X-Mavis-Session-Id"]) h["X-Mavis-Session-Id"] = randomUUID();
+    // Session id is CONVERSATION-scoped upstream. randomUUID() here made every
+    // turn a new session, i.e. a cold cache on every single request.
+    if (!h["X-Mavis-Session-Id"]) {
+      h["X-Mavis-Session-Id"] = resolveConversationId({ credentials, body, scope: provider || "mcode" });
+    }
   },
   // Muse: x-api-version only on subscription (minted key) requests — plain
   // Model API keys already work without it
@@ -187,7 +216,9 @@ export class DefaultExecutor extends BaseExecutor {
     const headers = { "Content-Type": "application/json", ...(rt ? rt.headers : this.config.headers) };
     const desc = rt?.auth || AUTH_DESCRIPTORS[this.provider] || this.resolveAuthDescriptor();
     // Hooks run BEFORE auth so dynamic overlays can't clobber the token.
-    for (const hook of desc.hooks || []) HEADER_HOOKS[hook]?.(headers, credentials);
+    // Hooks receive the outbound body (not merely the credentials) so
+    // conversation-scoped ids can be derived from the conversation itself.
+    for (const hook of desc.hooks || []) HEADER_HOOKS[hook]?.(headers, credentials, body, this.provider);
     applyAuth(headers, desc, credentials);
 
     // anthropic-compatible-* nodes serving a real Claude model sit in front of

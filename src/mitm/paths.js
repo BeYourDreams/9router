@@ -14,6 +14,13 @@ function defaultDir() {
 function getDataDir() {
   const configured = process.env.DATA_DIR;
   if (!configured) return defaultDir();
+  // Unix-style absolute paths (Linux/Docker .env) are not real paths on Windows:
+  // Node resolves them against the current drive root and Chrome rejects the
+  // resulting user-data-dir.
+  if (process.platform === "win32" && /^\//.test(configured)) {
+    console.warn(`[DATA_DIR] '${configured}' is a Unix path on Windows → fallback to default`);
+    return defaultDir();
+  }
   try {
     fs.mkdirSync(configured, { recursive: true });
     return configured;

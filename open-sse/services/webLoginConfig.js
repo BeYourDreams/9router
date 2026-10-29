@@ -58,6 +58,16 @@ export const WEB_LOGIN_CONFIGS = {
       }
     },
   },
+  "qwen-web": {
+    loginUrl: "https://www.qianwen.com/",
+    cookieDomain: ".qianwen.com",
+    // `isg` is the session cookie the page's security SDK sets after login;
+    // `tfstk` rides along and enriches the jar without gating on it.
+    tokenSources: [
+      { type: "cookie", name: "isg" },
+      { type: "cookie", name: "tfstk", optional: true },
+    ],
+  },
   "uc-web": {
     loginUrl: "https://uncensored.com/",
     cookieDomain: ".uncensored.com",
@@ -86,12 +96,18 @@ export const WEB_LOGIN_CONFIGS = {
   "xiaomimimo-web": {
     loginUrl: "https://aistudio.xiaomimimo.com/",
     cookieDomain: ".xiaomimimo.com",
-    // deviceId identifies the browser session; pass_ua/uLocale enrich the jar.
     tokenSources: [
-      { type: "cookie", name: "deviceId" },
-      { type: "cookie", name: "pass_ua", optional: true },
-      { type: "cookie", name: "uLocale", optional: true },
+      { type: "cookie", namePattern: /^(deviceId|passToken|serviceToken|userId|cUserId|.+_ph)$/ },
     ],
+  },
+  "intern-web": {
+    loginUrl: "https://discovery.intern-ai.org.cn/chat",
+    cookieDomain: ".intern-ai.org.cn",
+    // 登录凭据为 Cookie `uaa-token` (JWT)。前端发送的是 `Authorization: Bearer <纯 token>`，
+    // 所以 credential 只保留 cookie 值，不带 "uaa-token=" 前缀。
+    tokenSources: [{ type: "cookie", name: "uaa-token" }],
+    credentialFrom: "cookieValue",
+    cookieValueName: "uaa-token",
   },
 };
 

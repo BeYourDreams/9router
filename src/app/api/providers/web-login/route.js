@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection, deleteProviderConnection, getProviderConnections, updateProviderConnection } from "@/models";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
-import { startWebLogin, getWebLoginStatus, cancelWebLogin, listWebLoginProfiles } from "open-sse/services/webLogin.js";
+import { startWebLogin, getWebLoginStatus, cancelWebLogin, listWebLoginProfiles, readWebLoginCredential } from "open-sse/services/webLogin.js";
 import { getWebLoginConfig, listWebLoginProviders } from "open-sse/services/webLoginConfig.js";
 import { fetchWebIdentity } from "open-sse/services/webIdentity.js";
 
@@ -14,10 +14,25 @@ import { fetchWebIdentity } from "open-sse/services/webIdentity.js";
 
 // GET /api/providers/web-login            → supported provider list
 // GET /api/providers/web-login?provider=x → session status (saves once on success)
+// GET /api/providers/web-login?provider=x&read=1 → snapshot the open window now
 export async function GET(request) {
   const provider = request.nextUrl.searchParams.get("provider");
   if (!provider) {
     return NextResponse.json({ providers: listWebLoginProviders(), profiles: listWebLoginProfiles() });
+  }
+  if (request.nextUrl.searchParams.get("read") === "1") {
+    const { ready, reason } = await readWebLoginCredential(provider);
+    if (!ready) {
+      const current = getWebLoginStatus(provider);
+      return NextResponse.json({
+        provider,
+        status: current?.status || "idle",
+        profile: current?.profile || null,
+        error: reason === "browser-closed"
+          ? "The browser window was closed — open it again"
+          : "No login found yet — finish logging in in the browser, then click Read again",
+      });
+    }
   }
   const session = getWebLoginStatus(provider);
   if (!session) {
@@ -124,7 +139,10 @@ export async function POST(request) {
       return NextResponse.json({ error: `Web login not supported for "${provider}"` }, { status: 400 });
     }
     const session = await startWebLogin(provider, profile);
-    return NextResponse.json({ provider, profile: session.profile, status: session.status }, { status: 202 });
+    return NextResponse.json(
+      { provider, profile: session.profile, status: session.status, error: session.error || null },
+      { status: session.status === "error" ? 500 : 202 }
+    );
   } catch (error) {
     return NextResponse.json({ error: error?.message || "Failed to start login" }, { status: 500 });
   }

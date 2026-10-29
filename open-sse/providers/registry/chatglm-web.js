@@ -17,7 +17,7 @@ export default {
   category: "webCookie",
   authType: "cookie",
   serviceKinds: ["llm"],
-  authHint: "Paste your chatglm.cn cookie header containing chatglm_token (JWT) — or a full Playwright storage-state JSON",
+  authHint: "Optional: paste a chatglm.cn cookie containing chatglm_token (JWT) — or a full Playwright storage-state JSON. Leave empty to run as a guest.",
   transport: {
     baseUrl: "https://chatglm.cn",
     format: "openai",

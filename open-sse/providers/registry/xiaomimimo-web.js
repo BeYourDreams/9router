@@ -25,6 +25,11 @@ export default {
   },
   models: [
     { id: "mimo-v2.6-pro", name: "MiMo V2.6 Pro", supportsReasoning: true },
+    // UltraSpeed: the `/open-apis/bot/config` list names it `mimo-v2.6-pro-ultraspeed-studio`
+    // (display `MiMo-V2.6-Pro-UltraSpeed`); upstream expects the `-studio` suffix on the
+    // web transport. Alias `mimo-v2.6-pro-ultraspeed` for the cloud API naming.
+    { id: "mimo-v2.6-pro-ultraspeed-studio", name: "MiMo V2.6 Pro UltraSpeed", supportsReasoning: true },
+    { id: "mimo-v2.6-pro-ultraspeed", name: "MiMo V2.6 Pro UltraSpeed", supportsReasoning: true },
     { id: "mimo-v2.6-flash", name: "MiMo V2.6 Flash" },
     { id: "mimo-v2.5-pro", name: "MiMo V2.5 Pro" },
     { id: "mimo-v2.5", name: "MiMo V2.5" },

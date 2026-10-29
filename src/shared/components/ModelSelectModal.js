@@ -19,8 +19,10 @@ const PROVIDER_ORDER = [
   ...Object.keys(APIKEY_PROVIDERS),
 ];
 
-// Providers that need no auth — always show in model selector
-const NO_AUTH_PROVIDER_IDS = Object.keys(FREE_PROVIDERS).filter(id => FREE_PROVIDERS[id].noAuth);
+// Providers that need no auth — always show in model selector.
+// `hidden` registry entries (e.g. mimo-free — Xiaomi ended the free channel)
+// must stay out of the picker even though they keep noAuth/hasFree flags.
+const NO_AUTH_PROVIDER_IDS = Object.keys(FREE_PROVIDERS).filter(id => FREE_PROVIDERS[id].noAuth && !FREE_PROVIDERS[id].hidden);
 
 // Providers whose dashboard page renders the live per-account catalog instead of
 // the static registry (see providers/[id]/page.js `models`), so the picker must

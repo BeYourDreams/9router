@@ -81,63 +81,43 @@ export async function POST(request) {
             file: "api/relay.js",
             data: RELAY_FUNCTION_CODE,
           },
-          {
-            file: "package.json",
-            data: JSON.stringify({ name: projectName, version: "1.0.0" }),
-          },
-          {
-            file: "vercel.json",
-            data: JSON.stringify({
-              rewrites: [{ source: "/(.*)", destination: "/api/relay" }],
-            }),
-          },
         ],
+        target: "production",
         projectSettings: {
           framework: null,
+          buildCommand: null,
+          devCommand: null,
+          installCommand: null,
         },
-        target: "production",
       }),
     });
 
     if (!deployRes.ok) {
-      const err = await deployRes.json().catch(() => ({}));
-      return NextResponse.json(
-        { error: err.error?.message || "Failed to create Vercel deployment" },
-        { status: deployRes.status }
-      );
+      const err = await deployRes.json();
+      return NextResponse.json({ error: err.error || "Deployment failed" }, { status: 502 });
     }
 
-    const deployment = await deployRes.json();
-    const deploymentId = deployment.id || deployment.uid;
+    const deployData = await deployRes.json();
+    const deploymentId = deployData.id;
 
-    // Disable deployment protection (Vercel Authentication)
-    const projectId = deployment.projectId || projectName;
-    await fetch(`${VERCEL_API}/v9/projects/${projectId}`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${vercelToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ ssoProtection: null }),
-    });
-
-    // Poll until deployment is ready
+    // Poll until ready
     const ready = await pollDeployment(deploymentId, vercelToken);
-    const deployUrl = `https://${ready.url}`;
 
-    // Create proxy pool entry with type vercel
-    const proxyPool = await createProxyPool({
+    // Create proxy pool record with the relay URL
+    const relayUrl = `https://${ready.url}/api/relay`;
+    const pool = await createProxyPool({
       name: projectName,
-      proxyUrl: deployUrl,
-      type: "vercel",
-      noProxy: "",
-      isActive: true,
-      strictProxy: false,
+      provider: "vercel-relay",
+      config: { relayUrl, vercelToken, projectId: deployData.projectId },
+      enabled: true,
     });
 
-    return NextResponse.json({ proxyPool, deployUrl }, { status: 201 });
+    return NextResponse.json({
+      pool,
+      relayUrl,
+      deployment: { id: deploymentId, url: ready.url },
+    });
   } catch (error) {
-    console.log("Error deploying Vercel relay:", error);
-    return NextResponse.json({ error: error.message || "Deploy failed" }, { status: 500 });
+    return NextResponse.json({ error: error.message || String(error) }, { status: 500 });
   }
 }

@@ -1,15 +1,43 @@
 import { buildClineHeaders } from "../shared/clineAuth.js";
 
 const CLINEPASS_MODELS_ENDPOINT = "https://api.cline.bot/api/v1/models";
-// Cline's free tier is published here, not in /api/v1/models: the catalog
-// endpoint carries no `cline-free/*` ids at all. Cline's own SDK calls this
-// feed unauthenticated (sdk/packages/core/src/services/llms/cline-recommended-models.ts),
-// so no Authorization header is sent — adding one would only make the request
-// fail on a header the endpoint ignores.
 const CLINE_RECOMMENDED_MODELS_ENDPOINT = "https://api.cline.bot/api/v1/ai/cline/recommended-models";
 const FETCH_TIMEOUT_MS = 5000;
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 min
+const catalogCache = new Map();
 
-/**
+function cacheKey(credentials) {
+  const isApiKey = Boolean(credentials?.apiKey);
+  const token = isApiKey ? credentials.apiKey : credentials?.accessToken;
+  if (!token) return null;
+  // hash token prefix to avoid storing full secret in memory
+  const prefix = token.slice(0, 8);
+  return `cline:${isApiKey ? "apikey" : "oauth"}:${prefix}`;
+}
+
+function getCached(key) {
+  if (!key) return null;
+  const cached = catalogCache.get(key);
+  if (cached?.expiresAt > Date.now()) return cached.models;
+  return null;
+}
+
+function setCached(key, models) {
+  if (!key) return;
+  catalogCache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, models });
+}
+
+export function clearClineModelCache() {
+  catalogCache.clear();
+}
+
+// Cline's free tier is published here, not in /api/v1/models: the catalog
+ // endpoint carries no `cline-free/*` ids at all. Cline's own SDK calls this
+ // feed unauthenticated (sdk/packages/core/src/services/llms/cline-recommended-models.ts),
+ // so no Authorization header is sent — adding one would only make the request
+ // fail on a header the endpoint ignores.
+
+ /**
  * Build request headers for the ClinePass /models endpoint (Cline's upstream API).
  * - API keys are sent as plain Bearer tokens.
  * - OAuth access tokens must carry the WorkOS `workos:` prefix (handled by buildClineHeaders).
@@ -142,4 +170,17 @@ export async function resolveClineModels(credentials) {
   const merged = Array.from(byId.values());
 
   return merged.length ? { models: merged } : null;
+}
+
+/**
+ * Fetch ONLY the free-tier models: the recommended-models feed's `free[]`
+ * array (e.g. z-ai/glm-5.3-flash). Used by the "Import free models" action —
+ * the full catalog has hundreds of paid entries, and a Cline credit-based
+ * connection only ever needs the free ones.
+ *
+ * @returns {Promise<{id: string, name: string}[] | null>}
+ */
+export async function resolveClineFreeModels() {
+  const free = await fetchClineFreeTierModels();
+  return free && free.length ? free : null;
 }

@@ -17,7 +17,8 @@ export default {
   },
   category: "webCookie",
   authType: "cookie",
-  // No "llm": muse-chat stays API-reachable but is hidden from LLM lists —
+  hidden: true, // foreign: remove until local access restored
+    // No "llm": muse-chat stays API-reachable but is hidden from LLM lists —
   // this provider is surfaced through the image/video media pages only.
   serviceKinds: ["image", "video"],
   videoConfig: { executorDriven: true },
@@ -26,7 +27,7 @@ export default {
     baseUrl: "https://muse.ai",
     format: "openai",
     authType: "cookie",
-  },
+    },
   models: [
     { id: "muse-chat", name: "Muse Chat" },
     { id: "muse-image", name: "Muse Image", params: ["n", "size"], kind: "image" },

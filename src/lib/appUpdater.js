@@ -97,7 +97,11 @@ function collectAppPids() {
 
 // Copy updater.js into DATA_DIR so npm -g can overwrite node_modules safely
 function getDataDir() {
-  if (process.env.DATA_DIR) return process.env.DATA_DIR;
+  const configured = process.env.DATA_DIR;
+  // Unix-style absolute paths (Linux/Docker .env) are invalid on Windows.
+  if (configured && !(process.platform === "win32" && /^\//.test(configured))) {
+    return configured;
+  }
   if (process.platform === "win32") {
     return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "9router");
   }

@@ -1,0 +1,56 @@
+[
+  {
+    "url": "https://chat2-api.qianwen.com/api/v1/model/list?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asia%2FShanghai&wv=4.12.0&",
+    "status": 200,
+    "ct": "application/json",
+    "body": "{\"trace_id\":\"215042db17932552394977735e1605\",\"code\":0,\"msg\":\"success\",\"data\":[{\"newTag\":false,\"displayModelName\":\"Qwen3.7-千问\",\"show\":true,\"modelTag\":[],\"thirdParty\":false,\"expanded\":true,\"answerShow\":false,\"defaultModel\":true,\"modelCode\":\"Qwen\",\"supportMultiModal\":false,\"describe\":\"综合AI助手，全面回答工作、学习、生活各类问题\",\"legacyModelCode\":\"Qwen\"},{\"newTag\":false,\"displayModelName\":\"Qwen3.7-Max\",\"show\":true,\"modelTag\":[],\"thirdParty\":false,\"expanded\":true,\"answerShow\":false,\"defaultModel\":false,\"modelCode\":\"tongyi-qwen37-max-model\",\"supportMultiModal\":false,\"describe\":\"擅长代码编写，处理复杂任务\",\"legacyModelCode\":\"tongyi-qwen3-max-model\"},{\"newTag\":false,\"displayModelName\":\"Qwen3.6-Flash\",\"show\":true,\"modelTag\":[],\"thirdParty\":false,\"expanded\":true,\"answerShow\":true,\"defaultModel\":true,\"modelCode\":\"Qwen3.6-Flash\",\"supportMultiModal\":false,\"describe\":\"适用于简单任务，响应速度快\",\"legacyModelCode\":\"tongyi-qwen36-plus-model\"}],\"success\":true,\"httpCode\":200}"
+  },
+  {
+    "url": "https://chat2-api.qianwen.com/api/v1/session/top/list?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asia%2FShanghai&wv=4",
+    "status": 200,
+    "ct": "application/json",
+    "body": "{\"trace_id\":\"215042db17932552397327753e1605\",\"code\":0,\"msg\":\"success\",\"data\":[],\"success\":true,\"httpCode\":200}"
+  },
+  {
+    "url": "https://chat2-api.qianwen.com/api/v1/session/group/list?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asia%2FShanghai&wv",
+    "status": 200,
+    "ct": "application/json",
+    "body": "{\"trace_id\":\"215042db17932552397327754e1605\",\"code\":0,\"msg\":\"success\",\"success\":true,\"httpCode\":200}"
+  },
+  {
+    "url": "https://chat2-api.qianwen.com/api/v1/growth/benefit/query?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asia%2FShanghai&",
+    "status": 200,
+    "ct": "application/json",
+    "body": "{\"trace_id\":\"215042db17932552398867771e1605\",\"code\":0,\"msg\":\"success\",\"data\":[],\"success\":true,\"httpCode\":200}"
+  },
+  {
+    "url": "https://chat2-api.qianwen.com/api/v2/session/page/list?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asia%2FShanghai&wv=",
+    "status": 200,
+    "ct": "application/json",
+    "body": "{\"trace_id\":\"215042db17932552399597779e1605\",\"code\":0,\"msg\":\"success\",\"success\":true,\"httpCode\":200}"
+  },
+  {
+    "url": "https://qwen-agent-api.qianwen.com/api/v1/agent/task/scheduled/sidebar?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asi",
+    "status": 200,
+    "ct": "application/json;charset=utf-8",
+    "body": "{\"errorCode\":\"NOT_LOGIN\",\"errorMsg\":\"User not logged in\",\"httpCode\":401,\"success\":false,\"traceId\":\"213e07fc17932552400965631e0ac5\"}"
+  },
+  {
+    "url": "https://qwen-agent-api.qianwen.com/api/v1/agent/task/scheduled/list?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asia%2",
+    "status": 200,
+    "ct": "application/json;charset=utf-8",
+    "body": "{\"errorCode\":\"NOT_LOGIN\",\"errorMsg\":\"User not logged in\",\"httpCode\":401,\"success\":false,\"traceId\":\"213e07fc17932552400965630e0ac5\"}"
+  },
+  {
+    "url": "https://qwen-agent-api.qianwen.com/api/v1/agent/task/scheduled/list?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asia%2",
+    "status": 200,
+    "ct": "application/json;charset=utf-8",
+    "body": "{\"errorCode\":\"NOT_LOGIN\",\"errorMsg\":\"User not logged in\",\"httpCode\":401,\"success\":false,\"traceId\":\"213e07fc17932552476586491e0ac5\"}"
+  },
+  {
+    "url": "https://qwen-agent-api.qianwen.com/api/v1/agent/task/scheduled/sidebar?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=0117f23c-acd2-bf0c-0bb6-b0c33cebd264&la=zh-CN&tz=Asi",
+    "status": 200,
+    "ct": "application/json;charset=utf-8",
+    "body": "{\"errorCode\":\"NOT_LOGIN\",\"errorMsg\":\"User not logged in\",\"httpCode\":401,\"success\":false,\"traceId\":\"213e07fc17932552476636493e0ac5\"}"
+  }
+]

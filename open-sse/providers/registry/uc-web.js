@@ -11,14 +11,15 @@ export default {
   },
   category: "webCookie",
   authType: "cookie",
-  serviceKinds: ["image", "video"],
+  hidden: true, // foreign: remove until local access restored
+    serviceKinds: ["image", "video"],
   videoConfig: { executorDriven: true },
   authHint: "Paste your full uncensored.com Cookie header (must include the __client cookie) from a logged-in session — image + video are un-metered on the web plan",
   transport: {
     baseUrl: "https://internal.chatuncensored.ai",
     format: "openai",
     authType: "cookie",
-  },
+    },
   // Image ids are the `model_version` values accepted by /v2/image-gen;
   // video ids are the `model` values accepted by /image_to_video.
   models: [

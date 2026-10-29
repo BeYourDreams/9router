@@ -1,22 +1,21 @@
 {
   "name": "9router-app",
-  "version": "0.5.111",
+  "version": "0.5.112",
   "description": "9Router web dashboard",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 20127",
-    "dev:webpack": "next dev --webpack --port 20127",
+    "dev": "node scripts/dev-server.mjs",
+    "dev:webpack": "node scripts/dev-server.mjs --webpack",
     "build": "next build",
     "postbuild": "node scripts/copy-standalone-assets.mjs",
     "postbuild:bun": "node scripts/copy-standalone-assets.mjs",
-    "prestart": "node scripts/ensure-production-build.mjs",
-    "start": "node custom-server.js --port 20127",
-    "dev:bun": "bun --bun next dev --webpack --port 20127",
+    "start": "node scripts/start-server.mjs",
+    "dev:bun": "bun --bun next dev --webpack",
     "build:bun": "bun --bun next build --webpack",
-    "start:bun": "bun ./.next/standalone/custom-server.js",
+    "start:bun": "bun ./scripts/start-server.mjs",
     "cli:pack": "npm --prefix cli run pack:cli",
     "cli:publish": "npm --prefix cli run publish:cli"
-  },
+  }
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/modifiers": "^9.0.0",
@@ -59,9 +58,11 @@
   "comment_aws_sdk_credential_providers": "kept in optionalDependencies (npm still installs these by default) and imported lazily in shared/awsCredentials.js — only AWS Bedrock connections using profile/SSO mode need it; static accessKeyId/secretAccessKey connections never load it",
   "comment_playwright_core": "devDependency only (keeps end-user installs small); open-sse/services/lazyRuntime.js downloads it + wreq-js on first use into <DATA_DIR>/runtime. playwright-core ships no browser binaries (run `npx playwright-core install chromium` or point OBSCURA_CDP_ENDPOINT/cloakbrowser at a stealth engine)",
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4.1.18",
     "eslint": "^9",
     "eslint-config-next": "16.4.2",
+    "playwright": "^1.64.1",
     "playwright-core": "^1.62.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^4",

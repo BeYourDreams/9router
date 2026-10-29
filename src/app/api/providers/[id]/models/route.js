@@ -12,7 +12,7 @@ import { resolveGrokCliModels } from "open-sse/services/grokCliModels.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { resolveZedModels } from "open-sse/shared/zedAuth.js";
-import { resolveClineModels, resolveClinepassModels } from "open-sse/services/clinepassModels.js";
+import { resolveClineModels, resolveClinepassModels, resolveClineFreeModels } from "open-sse/services/clinepassModels.js";
 import { NOUS_MODELS_URL, normalizeNousModels } from "open-sse/services/nous.js";
 import codexProvider from "open-sse/providers/registry/codex.js";
 
@@ -400,7 +400,13 @@ const PROVIDER_MODELS_CONFIG = {
   // the cursor direct pattern (no refreshFn) and only differ in filtering:
   // cline returns the whole catalog verbatim, clinepass keeps cline-pass/* only.
   cline: {
-    customResolver: async (connection) => {
+    customResolver: async (connection, { freeOnly = false } = {}) => {
+      // "Import free models" only wants the recommended feed's free[] tier.
+      if (freeOnly) {
+        const free = await resolveClineFreeModels();
+        if (free?.length) return { models: free };
+        return { models: [], warning: "Cline's free-tier feed returned no models." };
+      }
       const result = await resolveClineModels({
         accessToken: connection.accessToken,
         apiKey: connection.apiKey,
@@ -413,7 +419,12 @@ const PROVIDER_MODELS_CONFIG = {
     },
   },
   clinepass: {
-    customResolver: async (connection) => {
+    customResolver: async (connection, { freeOnly = false } = {}) => {
+      if (freeOnly) {
+        const free = await resolveClineFreeModels();
+        if (free?.length) return { models: free };
+        return { models: [], warning: "Cline's free-tier feed returned no models." };
+      }
       const result = await resolveClinepassModels({
         accessToken: connection.accessToken,
         apiKey: connection.apiKey,
@@ -637,7 +648,9 @@ export async function GET(request, { params }) {
 
     // Config-driven custom resolver path (OAuth refresh, non-OpenAI shape, etc.)
     if (typeof config.customResolver === "function") {
-      const result = await config.customResolver(connection);
+      // `?free=1` narrows providers that publish a free tier to it.
+      const freeOnly = request.nextUrl.searchParams.get("free") === "1";
+      const result = await config.customResolver(connection, { freeOnly });
       if (result.error) {
         return NextResponse.json({ error: result.error }, { status: result.status || 500 });
       }
