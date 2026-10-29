@@ -15,9 +15,9 @@ const REQUIRED = [
 
 const CREDS = { accessToken: "TESTTOKEN", apiKey: null };
 
-function buildHeaders(id) {
+function buildHeaders(id, body = {}) {
   const executor = getExecutor(id);
-  return executor.buildHeaders(CREDS, true, PROVIDERS[id].baseUrl, "deepseek-v4.1-flash", {});
+  return executor.buildHeaders(CREDS, true, PROVIDERS[id].baseUrl, "deepseek-v4.1-flash", body);
 }
 
 describe("codebuddy channel headers", () => {
@@ -45,11 +45,46 @@ describe("codebuddy channel headers", () => {
         expect(buildHeaders(id).Authorization).toBe("Bearer TESTTOKEN");
       });
 
-      it("issues fresh ids per request", () => {
-        const a = buildHeaders(id);
-        const b = buildHeaders(id);
+      it("issues fresh request ids per request but keeps one conversation id", () => {
+        const body = { messages: [{ role: "user", content: "same conversation" }] };
+        const a = buildHeaders(id, body);
+        const b = buildHeaders(id, body);
+        // Request-scoped: a retry must not be deduped upstream as a repeat call.
         expect(a["X-Request-ID"]).not.toBe(b["X-Request-ID"]);
+        // Conversation-scoped: upstream keys its prompt cache on this, so a new
+        // id per request is a cold cache on every turn.
+        expect(a["X-Conversation-ID"]).toBe(b["X-Conversation-ID"]);
+      });
+
+      it("keeps the conversation id across turns of one conversation", () => {
+        const first = buildHeaders(id, { messages: [{ role: "user", content: "opening question" }] });
+        const second = buildHeaders(id, { messages: [
+          { role: "user", content: "opening question" },
+          { role: "assistant", content: "an answer" },
+          { role: "user", content: "a follow-up" },
+        ] });
+        expect(second["X-Conversation-ID"]).toBe(first["X-Conversation-ID"]);
+      });
+
+      it("gives different conversations different ids", () => {
+        const a = buildHeaders(id, { messages: [{ role: "user", content: "first thread" }] });
+        const b = buildHeaders(id, { messages: [{ role: "user", content: "second thread" }] });
         expect(a["X-Conversation-ID"]).not.toBe(b["X-Conversation-ID"]);
+      });
+
+      it("prefers the client's own session id over the message-derived one", () => {
+        const body = { messages: [{ role: "user", content: "hi" }] };
+        const exec = getExecutor(id);
+        const forSession = (sessionId) => exec
+          .buildHeaders({ ...CREDS, rawHeaders: { "x-session-id": sessionId } }, true, PROVIDERS[id].baseUrl, "auto", body)
+          ["X-Conversation-ID"];
+        expect(forSession("pi-session-1")).not.toBe(forSession("pi-session-2"));
+      });
+
+      it("emits UUID-shaped ids", () => {
+        const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+        const headers = buildHeaders(id);
+        for (const key of REQUIRED) expect(headers[key]).toMatch(uuid);
       });
     });
   }
