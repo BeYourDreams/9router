@@ -86,11 +86,12 @@ export const WEB_LOGIN_CONFIGS = {
   "xiaomimimo-web": {
     loginUrl: "https://aistudio.xiaomimimo.com/",
     cookieDomain: ".xiaomimimo.com",
-    // deviceId identifies the browser session; pass_ua/uLocale enrich the jar.
+    // The web app never sets a `deviceId` cookie (that's the desktop app), so
+    // gating on it hangs forever. The logged-in session lands as
+    // passToken/serviceToken/userId plus a per-category `<category>_ph`
+    // signature cookie; an anonymous visitor gets no cookies at all.
     tokenSources: [
-      { type: "cookie", name: "deviceId" },
-      { type: "cookie", name: "pass_ua", optional: true },
-      { type: "cookie", name: "uLocale", optional: true },
+      { type: "cookie", namePattern: /^(deviceId|passToken|serviceToken|userId|cUserId|.+_ph)$/ },
     ],
   },
 };

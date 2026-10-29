@@ -128,9 +128,11 @@ export function xiaomiMiMoWebStorageStateFromCookieHeader(raw) {
     return [part.slice(0, separator).trim(), part.slice(separator + 1)];
   });
 
-  if (!cookies.some(([name]) => /^(deviceId|pass_ua|uLocale)$/.test(name))) {
+  // The web session carries passToken/serviceToken/userId + a `<category>_ph`
+  // signature cookie; `deviceId` only exists in the desktop app's jar.
+  if (!cookies.some(([name]) => /^(deviceId|passToken|serviceToken|userId|cUserId|pass_ua|uLocale|.+_ph)$/.test(name))) {
     if (header.includes(";") || header.includes("=")) {
-      throw new Error("Xiaomi MiMo Web Cookie header is missing deviceId");
+      throw new Error("Xiaomi MiMo Web Cookie header is missing a session cookie");
     }
     cookies.splice(0, cookies.length, ["deviceId", header]);
   }

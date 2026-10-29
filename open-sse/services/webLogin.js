@@ -35,6 +35,10 @@ function matchesDomain(cookieDomain, cookie) {
 
 /** Direct cookie value, or the joined `.0/.1/…` chunks (NextAuth/Supabase split large values). */
 function findCookieValue(jar, source) {
+  if (source.namePattern) {
+    for (const [cookieName, value] of jar) if (source.namePattern.test(cookieName)) return value;
+    return null;
+  }
   for (const name of [source.name, ...(source.names || [])]) {
     if (!name) continue;
     const direct = jar.get(name);

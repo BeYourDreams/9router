@@ -55,7 +55,7 @@ export class XiaomiMiMoWebExecutor extends BaseExecutor {
         return true;
       }
       // Bare deviceId or cookie header
-      return /deviceId=/.test(raw) || /^wb_[a-f0-9-]+$/.test(raw.trim());
+      return /deviceId=|_ph=|passToken=|serviceToken=/.test(raw) || /^wb_[a-f0-9-]+$/.test(raw.trim());
     } catch {
       return false;
     }
