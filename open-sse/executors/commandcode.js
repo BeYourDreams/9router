@@ -3,6 +3,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { buildCommandCodeHeaders } from "../shared/commandCodeHeaders.js";
 import { commandCodeToOpenAIResponse } from "../translator/response/commandcode-to-openai.js";
 import { SSE_DONE } from "../utils/sseConstants.js";
+import { resolveConversationId } from "../shared/conversationId.js";
 
 /**
  * CommandCodeExecutor — talks to https://api.commandcode.ai/alpha/generate
@@ -27,9 +28,13 @@ export class CommandCodeExecutor extends BaseExecutor {
   }
 
   buildHeaders(credentials, stream = true, url, model, transformedBody) {
+    // buildCommandCodeHeaders falls back to randomUUID() when handed no session,
+    // which silently turns every such call into a cold-cache request. Always
+    // derive one from the conversation so no caller can hit that path.
     return buildCommandCodeHeaders({
       apiKey: credentials?.apiKey || credentials?.accessToken,
-      sessionId: transformedBody?.threadId,
+      sessionId: transformedBody?.threadId
+        || resolveConversationId({ credentials, body: transformedBody, scope: "commandcode" }),
       accept: stream ? "text/event-stream" : null,
     });
   }

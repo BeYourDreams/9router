@@ -141,6 +141,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
         cookie: cookieHeader(storageState),
         userAgent,
         body,
+        credentials: input.credentials,
         signal: input.signal,
         log: input.log,
       });
