@@ -148,6 +148,7 @@ import p151 from "./uc-web.js";
 import p152 from "./runcrate.js";
 import p153 from "./chatglm-web.js";
 import p154 from "./xiaomimimo-web.js";
+import p155 from "./nace.js";
 export default [
   p0,
   p1,
@@ -293,6 +294,8 @@ export default [
   p146,
   p147,
   p151,
+  p152,
   p153,
   p154,
+  p155,
 ];
