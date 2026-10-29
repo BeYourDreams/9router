@@ -152,16 +152,30 @@ export function cancelWebLogin(providerId) {
 }
 
 function credentialFrom(found, config) {
-  if (config.credentialFrom !== "localStorageValue") return found.cookieHeader;
-  const source = config.tokenSources[0];
-  let val = found.localStorageValues[source.name];
-  try {
-    const parsed = JSON.parse(val);
-    if (parsed && typeof parsed.value === "string") val = parsed.value;
-  } catch {
-    // not JSON, keep raw
+  if (config.credentialFrom === "localStorageValue") {
+    const source = config.tokenSources[0];
+    let val = found.localStorageValues[source.name];
+    try {
+      const parsed = JSON.parse(val);
+      if (parsed && typeof parsed.value === "string") val = parsed.value;
+    } catch {
+      // not JSON, keep raw
+    }
+    return val;
   }
-  return val;
+  // cookieValue: return only the value of the named cookie (pure token, no "name=" prefix).
+  // Needed for providers that send Authorization: Bearer <token> rather than Cookie: name=<token>.
+  if (config.credentialFrom === "cookieValue") {
+    const name = config.cookieValueName || config.tokenSources[0]?.name;
+    if (!name) return found.cookieHeader;
+    const match = found.cookieHeader.match(new RegExp(`(?:^|;\\s*)${escapeRegExp(name)}=([^;]*)`));
+    return match ? match[1] : found.cookieHeader;
+  }
+  return found.cookieHeader;
+}
+
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**

@@ -103,9 +103,11 @@ export const WEB_LOGIN_CONFIGS = {
   "intern-web": {
     loginUrl: "https://discovery.intern-ai.org.cn/chat",
     cookieDomain: ".intern-ai.org.cn",
-    // 登录后以 `uaa-token` (JWT) 形式设在 discovery.intern-ai.org.cn 域名下；
-    // chat 接口 /api/orbit/v1/chat 带 Cookie 即可鉴权。
+    // 登录凭据为 Cookie `uaa-token` (JWT)。前端发送的是 `Authorization: Bearer <纯 token>`，
+    // 所以 credential 只保留 cookie 值，不带 "uaa-token=" 前缀。
     tokenSources: [{ type: "cookie", name: "uaa-token" }],
+    credentialFrom: "cookieValue",
+    cookieValueName: "uaa-token",
   },
 };
 

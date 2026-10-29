@@ -290,7 +290,12 @@ const PROBES = {
     const token = jar.get("uaa-token");
     if (!token) return REJECTED("Missing uaa-token cookie");
     const res = await request("https://discovery.intern-ai.org.cn/api/user-center/v1/users/getUserInfo", {
-      headers: { Cookie: `uaa-token=${token}`, Accept: "application/json", Origin: "https://discovery.intern-ai.org.cn", Referer: "https://discovery.intern-ai.org.cn/" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        Origin: "https://discovery.intern-ai.org.cn",
+        Referer: "https://discovery.intern-ai.org.cn/",
+      },
     });
     if (!res.status) return UNKNOWN(res.error);
     if (res.status === 401 || res.status === 403) return REJECTED("uaa-token is invalid or expired");
