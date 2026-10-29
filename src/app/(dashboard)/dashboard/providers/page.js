@@ -367,13 +367,13 @@ export default function ProvidersPage() {
       : apikeyEntries.slice(0, APIKEY_INITIAL_VISIBLE);
   const hiddenApikeyCount = apikeyEntries.length - APIKEY_INITIAL_VISIBLE;
 
-  // Web Cookie: providers authenticated by a pasted browser/session cookie
-  // (connections are stored with authType "cookie" — see POST /api/providers).
+  // Web Cookie: all web providers live in this single section regardless of the
+  // service kind they serve (llm, image, video) — connections are stored with
+  // authType "cookie" (see POST /api/providers).
   const webCookieEntries = Object.entries(WEB_COOKIE_PROVIDERS)
     .filter(
       ([key, info]) =>
         !info.hidden &&
-        (info.serviceKinds ?? ["llm"]).includes("llm") &&
         matchSearch(info.name) &&
         matchStatus(getProviderStats(key, "cookie"), info.noAuth),
     )
