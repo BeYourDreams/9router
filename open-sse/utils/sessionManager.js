@@ -9,16 +9,186 @@
  */
 
 import crypto from "crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
+import { getWritableDataDir } from "./writableDataDir.js";
 
-// Runtime storage: Key = connectionId, Value = { sessionId, lastUsed }
-const runtimeSessionStore = new Map();
-const continuationStore = new Map();
+// ---------------------------------------------------------------------------
+// Disk persistence
+//
+// Session ids live in Maps, so anything that drops the module — a dev HMR
+// reload, a `next dev` recompile, a server restart — hands every connection a
+// brand-new id. Upstream keys its prompt cache on that id, so the very next
+// turn after a reload is a cold cache miss and the user pays full input price
+// again.
+//
+// Mirroring the three stores to disk keeps ids stable across reloads. Writes
+// are debounced and best-effort: a read-only data dir must never break routing.
+// ---------------------------------------------------------------------------
+
+const SESSION_STORE_FILE = "session-store.json";
+const PERSIST_DEBOUNCE_MS = 2000;
+
+function storeFilePath() {
+  try {
+    return path.join(getWritableDataDir(), SESSION_STORE_FILE);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A Map that survives process reloads.
+ * Entries are `{ value, lastUsed }` — `lastUsed` drives both in-memory TTL and
+ * the prune-on-load step, so a store idle for days does not grow forever.
+ */
+// Every store registers its flush handler here so one process-level hook can
+// persist all of them on shutdown.
+const STORES = [];
+function createPersistentStore(name, maxEntries) {
+  const map = new Map();
+  let timer = null;
+  let loaded = false;
+
+  function load() {
+    if (loaded) return;
+    loaded = true;
+    const file = storeFilePath();
+    if (!file) return;
+    try {
+      const raw = fs.readFileSync(file, "utf8");
+      const parsed = JSON.parse(raw);
+      const bucket = parsed?.[name];
+      if (!bucket || typeof bucket !== "object") return;
+      // The TTL means "this conversation went idle", NOT "wall-clock time passed".
+      // Downtime is not idleness: the user shut the gateway down overnight and is
+      // resuming the very same conversation this morning. Pruning on absolute
+      // lastUsed therefore threw away every session after a restart, which is the
+      // opposite of what persisting them is for. Only prune when traffic true-ups
+      // (see the touch below), i.e. real elapsed conversation inactivity.
+      const cutoff = Date.now() - MEMORY_CONFIG.sessionTtlMs;
+      let retained = 0;
+      for (const [key, entry] of Object.entries(bucket)) {
+        if (!entry || typeof entry.value !== "string") continue;
+        const lastUsed = Number(entry.lastUsed) || Date.now();
+        // Restart carries every recently-active session over; only entries that
+        // were ALREADY idle before the restart (and have since been superseded by
+        // fresher ones) are dropped, so the loaded store stays bounded without
+        // discarding live conversations after downtime.
+        if (lastUsed < cutoff && retained >= MAX_LOAD_ENTRIES) continue;
+        retained++;
+        map.set(key, { value: entry.value, lastUsed });
+      }
+    } catch {
+      // Missing/corrupt file: start empty. Never throw during module init.
+    }
+  }
+
+  function flush() {
+    const file = storeFilePath();
+    if (!file) return;
+    try {
+      let parsed = {};
+      try { parsed = JSON.parse(fs.readFileSync(file, "utf8")); } catch { /* start fresh */ }
+      if (!parsed || typeof parsed !== "object") parsed = {};
+      const bucket = {};
+      for (const [key, entry] of map) bucket[key] = { value: entry.value, lastUsed: entry.lastUsed };
+      parsed[name] = bucket;
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(`${file}.tmp`, JSON.stringify(parsed), "utf8");
+      fs.renameSync(`${file}.tmp`, file);
+    } catch {
+      // Read-only or full disk: persistence is an optimization, not a requirement.
+    }
+  }
+
+  function schedule() {
+    if (timer) return;
+    timer = setTimeout(() => { timer = null; flush(); }, PERSIST_DEBOUNCE_MS);
+    if (timer.unref) timer.unref();
+  }
+
+  // Flush whatever is pending, synchronously. Registered on process exit so a
+  // restart inside the debounce window does not lose the ids it just minted —
+  // with the timer unref'd, Node would otherwise exit without ever running it.
+  function flushNow() {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    flush();
+  }
+
+  STORES.push(flushNow);
+
+  return {
+    get(key) {
+      load();
+      return map.get(key);
+    },
+    set(key, value) {
+      load();
+      // Evict oldest when over cap (safety net between cleanup cycles).
+      if (map.size >= maxEntries) {
+        const oldest = map.keys().next().value;
+        if (oldest !== undefined && !map.has(key)) map.delete(oldest);
+      }
+      map.set(key, { value, lastUsed: Date.now() });
+      schedule();
+    },
+    delete(key) {
+      map.delete(key);
+      schedule();
+    },
+    clear() {
+      map.clear();
+      schedule();
+    },
+    /** Iterate for TTL cleanup without touching lastUsed. */
+    entries() {
+      return map.entries();
+    },
+    /** Best-effort synchronous flush (tests, shutdown). */
+    flush,
+  };
+}
+
+// Persist on the way out. Without this, a restart inside the debounce window
+// loses every id minted since the last flush: the debounce timer is unref'd so
+// Node exits without running it. `exit` is synchronous-only, which is exactly
+// what writeFileSync needs; SIGINT/SIGTERM are handled separately because
+// `exit` does not fire when a signal terminates the process.
+export function flushAllSessionStores() {
+  for (const flush of STORES) {
+    try { flush(); } catch { /* best-effort: never block shutdown */ }
+  }
+}
+
+let hooksRegistered = false;
+function registerShutdownHooks() {
+  if (hooksRegistered) return;
+  hooksRegistered = true;
+  const persist = () => flushAllSessionStores();
+  process.once("exit", persist);
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.once(signal, () => {
+      persist();
+      // Re-raise so the default behaviour (and any other listener) still runs.
+      process.kill(process.pid, signal);
+    });
+  }
+}
+registerShutdownHooks();
+
+// Runtime storage: Key = connectionId, Value = { value: sessionId, lastUsed }
+const runtimeSessionStore = createPersistentStore("runtime", 1000);
+const continuationStore = createPersistentStore("continuation", 5000);
 
 // Periodically evict entries that haven't been used within TTL
 const cleanupInterval = setInterval(() => {
     const now = Date.now();
-    for (const [key, entry] of runtimeSessionStore) {
+    for (const [key, entry] of runtimeSessionStore.entries()) {
         if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) {
             runtimeSessionStore.delete(key);
         }
@@ -49,19 +219,13 @@ export function deriveSessionId(connectionId) {
 
     const existing = runtimeSessionStore.get(connectionId);
     if (existing) {
-        existing.lastUsed = Date.now();
-        return existing.sessionId;
-    }
-
-    // Evict oldest entry if store exceeds max size (safety cap between cleanup cycles)
-    const MAX_SESSIONS = 1000;
-    if (runtimeSessionStore.size >= MAX_SESSIONS) {
-      const oldest = runtimeSessionStore.keys().next().value;
-      runtimeSessionStore.delete(oldest);
+        // Refresh the TTL in place (the store persists `lastUsed` to disk).
+        runtimeSessionStore.set(connectionId, existing.value);
+        return existing.value;
     }
 
     const sessionId = generateBinaryStyleId();
-    runtimeSessionStore.set(connectionId, { sessionId, lastUsed: Date.now() });
+    runtimeSessionStore.set(connectionId, sessionId);
     return sessionId;
 }
 
@@ -84,11 +248,11 @@ export function clearSessionStore() {
     continuationStore.clear();
 }
 
-// Conversation-stable session store: Key = hash(scope+assistant text), Value = { sessionId, lastUsed }
-const assistantSessionStore = new Map();
+// Conversation-stable session store: Key = hash(scope+assistant text)
+const assistantSessionStore = createPersistentStore("assistant", 5000);
+const MAX_LOAD_ENTRIES = 500;
 const ASSISTANT_MIN_LEN = 50;
 const ASSISTANT_CAP_LEN = 50;
-const MAX_ASSISTANT_SESSIONS = 5000;
 const MAX_CONTINUATION_SESSIONS = 5000;
 
 // Client headers/body fields that carry an upstream session id (priority order)
@@ -198,16 +362,49 @@ function assistantTextSessionId(scope, body) {
     const { text, hasTool } = accumulateAssistantText(body);
     if (!hasTool && text.length < ASSISTANT_MIN_LEN) return null;
     const hash = sha16(`${scope}:${text.slice(0, ASSISTANT_CAP_LEN)}`);
-    const existing = assistantSessionStore.get(hash);
-    if (existing) {
-        existing.lastUsed = Date.now();
-        return existing.sessionId;
+    return sessionIdForHash(assistantSessionStore, hash);
+}
+
+// First user turn of the conversation, flattened to text. This is the most
+// durable anchor an agent conversation has: unlike the accumulated assistant
+// output it does not move when the context is compacted/summarized, and unlike
+// the connection id it separates two conversations that share one credential.
+// Clients that send no session id at all (Pi configured with
+// `api: "openai-completions"` sends neither a header nor a body field) have
+// nothing else to key on.
+const FIRST_USER_CAP_LEN = 200;
+function firstUserSessionId(scope, body) {
+    const items = requestMessages(body);
+    for (const item of items) {
+        // Only a conversation that has grown past its opening turn can be told
+        // apart from a fresh one; a single user message is the start of both.
+        if (item?.role === "user" && String(flattenContent(item.content)).trim()) {
+            const text = String(flattenContent(item.content)).trim().slice(0, FIRST_USER_CAP_LEN);
+            if (!text) return null;
+            return sessionIdForHash(assistantSessionStore, sha16(`${scope}:first-user:${text}`));
+        }
     }
-    if (assistantSessionStore.size >= MAX_ASSISTANT_SESSIONS) {
-        assistantSessionStore.delete(assistantSessionStore.keys().next().value);
+    return null;
+}
+
+function flattenContent(content) {
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+        return content.map((c) => (typeof c === "string" ? c : c?.text || c?.output || "")).join("");
+    }
+    return "";
+}
+
+// Look up-or-mint, refreshing the TTL in place so a long conversation survives
+// the cleanup sweep.
+function sessionIdForHash(store, hash) {
+    const existing = store.get(hash);
+    if (existing) {
+        store.set(hash, existing.value);
+        return existing.value;
     }
     const sessionId = generateBinaryStyleId();
-    assistantSessionStore.set(hash, { sessionId, lastUsed: Date.now() });
+    store.set(hash, sessionId);
     return sessionId;
 }
 
@@ -226,6 +423,13 @@ function assistantTextSessionId(scope, body) {
 export function resolveSessionIdentity({ headers, body, connectionId, workspaceId, scope = "" } = {}) {
     const client = extractClientSessionId(headers, body, scope);
     if (client) return { sessionId: client, ephemeral: false };
+    // The opening user turn is tried BEFORE the accumulated assistant output:
+    // it is the more durable anchor. Assistant text moves whenever an agent
+    // compacts or summarizes its context, which starts a new session — and
+    // therefore a cold cache — in the middle of a conversation. See the
+    // `firstUserSessionId` comment below.
+    const fromFirstUser = scope === "kiro" ? null : firstUserSessionId(`${scope}:${connectionId || ""}`, body);
+    if (fromFirstUser) return { sessionId: fromFirstUser, ephemeral: false };
     const fromAssistant = scope === "kiro" ? null : assistantTextSessionId(`${scope}:${connectionId || ""}`, body);
     if (fromAssistant) return { sessionId: fromAssistant, ephemeral: false };
     const ws = normalizeSessionId(workspaceId);
@@ -241,18 +445,21 @@ export function resolveSessionId(opts = {}) {
 export function resolveContinuationId({ sessionId, connectionId, scope = "", ephemeral = false } = {}) {
     if (ephemeral) return crypto.randomUUID();
     const key = `${scope}:${connectionId || ""}:${sessionId || ""}`;
+    // The store normalizes to `{ value, lastUsed }` and persists it that way, so
+    // the continuation id must live in `value` — reading a `continuationId`
+    // property off the entry always came back undefined after the first turn.
     const existing = continuationStore.get(key);
     if (existing) {
-        existing.lastUsed = Date.now();
+        // Re-insert to move the key to the tail (recency order for eviction).
         continuationStore.delete(key);
-        continuationStore.set(key, existing);
-        return existing.continuationId;
+        continuationStore.set(key, existing.value);
+        return existing.value;
     }
     const continuationId = crypto.randomUUID();
     if (continuationStore.size >= MAX_CONTINUATION_SESSIONS) {
         continuationStore.delete(continuationStore.keys().next().value);
     }
-    continuationStore.set(key, { continuationId, lastUsed: Date.now() });
+    continuationStore.set(key, continuationId);
     return continuationId;
 }
 
