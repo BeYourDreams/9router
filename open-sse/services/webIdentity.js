@@ -6,9 +6,22 @@
 // web session). A probe answers three things — ok / rejected / unknown — so a
 // flaky network never flips a healthy connection to "error".
 import https from "node:https";
+import { createHash, randomUUID } from "node:crypto";
 import { extractCookieValue, normalizeSessionCookieHeader } from "../utils/webCookieAuth.js";
 import { normalizeGeminiValidationCookie } from "../utils/geminiCookies.js";
 import { grokTlsFetch, GROK_TLS_USER_AGENT } from "./grokTlsClient.js";
+
+// chatglm.cn signs every first-party call with md5(`ts-nonce-salt`).
+const CHATGLM_SIGN_SALT = "8a1317a7468aa3ad86e997d08f3f31cb";
+
+/** Mirrors the web client's obfuscated timestamp (identity for 13-char ms values). */
+function obfuscateTimestamp(now = Date.now()) {
+  const raw = String(now);
+  const digits = [...raw].map(Number);
+  const total = digits.reduce((sum, d) => sum + d, 0);
+  const replacement = (total - digits[digits.length - 2]) % 10;
+  return `${raw.slice(0, -2)}${replacement}${raw.slice(-1)}`;
+}
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
@@ -208,6 +221,54 @@ const PROBES = {
     return OK(email.includes("@") ? email : "");
   },
 
+  async "chatglm-web"(credential) {
+    // The session is a Cookie header (or bare JWT) with a `chatglm_token` cookie.
+    const jar = cookieJar(credential);
+    const token = (jar.get("chatglm_token") || "").replace(/^Bearer\s+/i, "")
+      || String(credential || "").replace(/^Bearer\s+/i, "").trim();
+    if (!token) return REJECTED("Missing chatglm_token cookie");
+
+    // /user-api/user/info requires the same signature triple as the chat call:
+    //   md5(`<timestamp>-<nonce>-8a1317a7468aa3ad86e997d08f3f31cb`)
+    const timestamp = obfuscateTimestamp();
+    const nonce = randomUUID().replace(/-/g, "");
+    const sign = createHash("md5").update(`${timestamp}-${nonce}-${CHATGLM_SIGN_SALT}`, "utf8").digest("hex");
+    const deviceId = jar.get("chatglm-deid") || `device-${randomUUID().replace(/-/g, "")}`;
+
+    const res = await request("https://chatglm.cn/chatglm/user-api/user/info", {
+      headers: {
+        Cookie: credential.includes("=") ? credential : `chatglm_token=${token}`,
+        Accept: "application/json, text/plain, */*",
+        "App-Name": "chatglm",
+        "X-Lang": "zh",
+        "X-App-Platform": "pc",
+        "X-App-Version": "0.0.1",
+        "X-App-fr": "default",
+        "X-Device-Id": deviceId,
+        "X-Device-Model": "",
+        "X-Device-Brand": "",
+        "X-Request-Id": randomUUID().replace(/-/g, ""),
+        "X-Exp-Groups": "",
+        "X-Timestamp": timestamp,
+        "X-Nonce": nonce,
+        "X-Sign": sign,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!res.status) return UNKNOWN(res.error);
+    if (res.status === 401 || res.status === 403) return REJECTED("chatglm_token is invalid or expired");
+    if (!res.ok) return UNKNOWN(`chatglm.cn returned HTTP ${res.status}`);
+
+    let json = null;
+    try { json = JSON.parse(res.text); } catch { return UNKNOWN("chatglm.cn returned invalid JSON"); }
+    // App-level auth failure: the gateway answers 200 with a numeric status.
+    const code = Number(json?.status ?? json?.code ?? 0);
+    if (code === 40103 || code === 401 || code === 400) return REJECTED("chatglm_token is invalid or expired");
+    const result = json?.result;
+    if (!result || typeof result !== "object") return REJECTED("chatglm.cn did not return a profile");
+    const email = typeof result.email === "string" ? result.email : "";
+    return OK(email);
+  },
 
 };
 

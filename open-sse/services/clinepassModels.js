@@ -171,3 +171,16 @@ export async function resolveClineModels(credentials) {
 
   return merged.length ? { models: merged } : null;
 }
+
+/**
+ * Fetch ONLY the free-tier models: the recommended-models feed's `free[]`
+ * array (e.g. z-ai/glm-5.3-flash). Used by the "Import free models" action —
+ * the full catalog has hundreds of paid entries, and a Cline credit-based
+ * connection only ever needs the free ones.
+ *
+ * @returns {Promise<{id: string, name: string}[] | null>}
+ */
+export async function resolveClineFreeModels() {
+  const free = await fetchClineFreeTierModels();
+  return free && free.length ? free : null;
+}

@@ -654,7 +654,9 @@ export default function ProviderDetailPage() {
   };
   // Fetch the live Cline /models catalog and add every model not yet present.
   // Cline and ClinePass share the same catalog endpoint (api.cline.bot/api/v1/models).
-  const handleImportClineModels = async () => {
+  // `freeOnly` asks the API for just the recommended free[] tier, so a
+  // credit-based connection does not import hundreds of paid entries.
+  const handleImportClineModels = async ({ freeOnly = false } = {}) => {
     if (importingClineModels) return;
     const activeConnection = connections.find((conn) => conn.isActive !== false);
     if (!activeConnection) {
@@ -663,7 +665,9 @@ export default function ProviderDetailPage() {
     }
     setImportingClineModels(true);
     try {
-      const res = await fetch(`/api/providers/${activeConnection.id}/models`);
+      const res = await fetch(
+        `/api/providers/${activeConnection.id}/models${freeOnly ? "?free=1" : ""}`
+      );
       const data = await res.json();
       if (!res.ok) {
         alert(data.error || translate("Failed to fetch models"));
@@ -671,7 +675,7 @@ export default function ProviderDetailPage() {
       }
       const models = data.models || [];
       if (models.length === 0) {
-        alert(translate("No models returned"));
+        alert(data.warning || translate("No models returned"));
         return;
       }
       let importedCount = 0;
@@ -1279,16 +1283,28 @@ export default function ProviderDetailPage() {
 
         {/* Import Cline /models catalog button — only show for cline and clinepass providers */}
         {(providerId === "cline" || providerId === "clinepass") && connections.some((conn) => conn.isActive !== false) && (
-          <button
-            onClick={handleImportClineModels}
-            disabled={importingClineModels}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-blue-500/40 px-3 py-2 text-xs text-blue-600 dark:text-blue-400 transition-colors hover:border-blue-500 hover:bg-blue-500/5 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <span className="material-symbols-outlined text-sm" style={importingClineModels ? { animation: "spin 1s linear infinite" } : undefined}>
-              {importingClineModels ? "progress_activity" : "download"}
-            </span>
-            {importingClineModels ? translate("Fetching...") : translate("Import from /models")}
-          </button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <button
+              onClick={() => handleImportClineModels({ freeOnly: true })}
+              disabled={importingClineModels}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-emerald-500/40 px-3 py-2 text-xs text-emerald-600 transition-colors hover:border-emerald-500 hover:bg-emerald-500/5 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-400 sm:w-auto"
+            >
+              <span className="material-symbols-outlined text-sm" style={importingClineModels ? { animation: "spin 1s linear infinite" } : undefined}>
+                {importingClineModels ? "progress_activity" : "bolt"}
+              </span>
+              {importingClineModels ? translate("Fetching...") : translate("Import free models")}
+            </button>
+            <button
+              onClick={() => handleImportClineModels({ freeOnly: false })}
+              disabled={importingClineModels}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-blue-500/40 px-3 py-2 text-xs text-blue-600 transition-colors hover:border-blue-500 hover:bg-blue-500/5 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 sm:w-auto"
+            >
+              <span className="material-symbols-outlined text-sm" style={importingClineModels ? { animation: "spin 1s linear infinite" } : undefined}>
+                {importingClineModels ? "progress_activity" : "download"}
+              </span>
+              {importingClineModels ? translate("Fetching...") : translate("Import from /models")}
+            </button>
+          </div>
         )}
 
         {/* Suggested models from provider API — show only models not yet added */}
