@@ -21,6 +21,7 @@ export default {
     authType: "cookie",
   },
   models: [
+    { id: "Auto", name: "Auto" },
     { id: "internlm2.5-20b", name: "InternLM2.5-20B" },
     { id: "internlm2.5-7b", name: "InternLM2.5-7B" },
   ],
