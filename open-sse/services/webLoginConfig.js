@@ -96,13 +96,16 @@ export const WEB_LOGIN_CONFIGS = {
   "xiaomimimo-web": {
     loginUrl: "https://aistudio.xiaomimimo.com/",
     cookieDomain: ".xiaomimimo.com",
-    // The web app never sets a `deviceId` cookie (that's the desktop app), so
-    // gating on it hangs forever. The logged-in session lands as
-    // passToken/serviceToken/userId plus a per-category `<category>_ph`
-    // signature cookie; an anonymous visitor gets no cookies at all.
     tokenSources: [
       { type: "cookie", namePattern: /^(deviceId|passToken|serviceToken|userId|cUserId|.+_ph)$/ },
     ],
+  },
+  "intern-web": {
+    loginUrl: "https://discovery.intern-ai.org.cn/chat",
+    cookieDomain: ".intern-ai.org.cn",
+    // 登录后以 `uaa-token` (JWT) 形式设在 discovery.intern-ai.org.cn 域名下；
+    // chat 接口 /api/orbit/v1/chat 带 Cookie 即可鉴权。
+    tokenSources: [{ type: "cookie", name: "uaa-token" }],
   },
 };
 

@@ -285,6 +285,25 @@ const PROBES = {
     return OK(email);
   },
 
+  async "intern-web"(credential) {
+    const jar = cookieJar(credential);
+    const token = jar.get("uaa-token");
+    if (!token) return REJECTED("Missing uaa-token cookie");
+    const res = await request("https://discovery.intern-ai.org.cn/api/user-center/v1/users/getUserInfo", {
+      headers: { Cookie: `uaa-token=${token}`, Accept: "application/json", Origin: "https://discovery.intern-ai.org.cn", Referer: "https://discovery.intern-ai.org.cn/" },
+    });
+    if (!res.status) return UNKNOWN(res.error);
+    if (res.status === 401 || res.status === 403) return REJECTED("uaa-token is invalid or expired");
+    if (!res.ok) return UNKNOWN(`Intern returned HTTP ${res.status}`);
+    let json = null;
+    try { json = JSON.parse(res.text); } catch { return UNKNOWN("Intern returned invalid JSON"); }
+    if (Number(json?.code) !== 0) return REJECTED("Intern rejected the uaa-token");
+    const data = json?.data;
+    if (!data) return REJECTED("Intern did not return a profile");
+    const email = typeof data.sso_email === "string" ? data.sso_email : "";
+    return OK(email);
+  },
+
 };
 
 export function hasWebIdentityProbe(providerId) {

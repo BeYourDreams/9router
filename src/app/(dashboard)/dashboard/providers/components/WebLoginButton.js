@@ -16,6 +16,7 @@ export const WEB_LOGIN_PROVIDERS = new Set([
   "chatglm-web",
   "xiaomimimo-web",
   "qwen-web",
+  "intern-web",
 ]);
 
 const PROFILE_ICON_BY_NAME = {
