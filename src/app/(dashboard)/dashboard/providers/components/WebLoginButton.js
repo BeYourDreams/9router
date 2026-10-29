@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Modal } from "@/shared/components";
 import { translate } from "@/i18n/runtime";
@@ -15,6 +15,7 @@ export const WEB_LOGIN_PROVIDERS = new Set([
   "uc-web",
   "chatglm-web",
   "xiaomimimo-web",
+  "qwen-web",
 ]);
 
 const PROFILE_ICON_BY_NAME = {
@@ -41,29 +42,15 @@ const STAGES = [
 /**
  * "Login via browser" for web-cookie providers: opens a HEADED Chrome window
  * on a SHARED browser profile (one Google login serves every provider via
- * "Continue with Google"), polls the capture session and auto-creates the
- * connection. No cookie ever reaches this component — only status.
- */
+ * "Continue with Google"). The window is never closed automatically — the user
+ * logs in, then clicks "Read key". No cookie ever reaches this component. */
 export default function WebLoginButton({ providerId, onConnected, size = "sm" }) {
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState("idle"); // idle | opening | waiting | success | error
   const [message, setMessage] = useState("");
+  const [reading, setReading] = useState(false);
   const [profiles, setProfiles] = useState(["default"]);
   const [profile, setProfile] = useState("default");
-  const timerRef = useRef(null);
-  const closeTimerRef = useRef(null);
-
-  const stopPolling = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => () => {
-    stopPolling();
-    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-  }, [stopPolling]);
 
   useEffect(() => {
     if (!open) return;
@@ -88,45 +75,17 @@ export default function WebLoginButton({ providerId, onConnected, size = "sm" })
 
   const busy = phase === "opening" || phase === "waiting";
 
-  const handleClose = useCallback(() => {
-    if (busy) return;
-    stopPolling();
-    setOpen(false);
-    if (phase === "error") {
-      setPhase("idle");
-      setMessage("");
-    }
-  }, [busy, phase, stopPolling]);
+  const closeBrowser = useCallback(() => {
+    fetch(`/api/providers/web-login?provider=${encodeURIComponent(providerId)}`, { method: "DELETE" }).catch(() => {});
+  }, [providerId]);
 
-  const poll = useCallback(() => {
-    stopPolling();
-    timerRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/providers/web-login?provider=${encodeURIComponent(providerId)}`, { cache: "no-store" });
-        const data = await res.json();
-        if (data.status === "success") {
-          stopPolling();
-          setPhase("success");
-          setMessage(data.email ? `${translate("Signed in as")} ${data.email}` : "Connection saved");
-          if (typeof onConnected === "function") onConnected();
-          // Let the "signed in" line register, then close itself — the user has
-          // no action left to take in this dialog.
-          closeTimerRef.current = setTimeout(() => {
-            setOpen(false);
-            setMessage("");
-          }, 1500);
-        } else if (data.status === "error" || data.status === "timeout" || data.status === "cancelled") {
-          stopPolling();
-          setPhase("error");
-          setMessage(data.error || translate("Login failed"));
-        } else {
-          setPhase((prev) => (prev === "opening" ? "waiting" : prev));
-        }
-      } catch {
-        // transient network hiccup — keep polling
-      }
-    }, 2000);
-  }, [providerId, onConnected, stopPolling]);
+  const handleClose = useCallback(() => {
+    // Closing the dialog closes the window we opened — nothing is captured behind the user's back.
+    if (busy || phase === "success") closeBrowser();
+    setOpen(false);
+    setPhase("idle");
+    setMessage("");
+  }, [busy, phase, closeBrowser]);
 
   const handleStart = useCallback(async () => {
     setPhase("opening");
@@ -138,26 +97,50 @@ export default function WebLoginButton({ providerId, onConnected, size = "sm" })
         body: JSON.stringify({ provider: providerId, profile }),
       });
       const data = await res.json();
-      if (!res.ok) {
+      if (!res.ok || data.status === "error") {
         setPhase("error");
         setMessage(data.error || translate("Failed to start login"));
         return;
       }
       setPhase("waiting");
-      setMessage(translate("A browser window has opened — log in there, this page updates itself."));
-      poll();
+      setMessage(translate("Log in in the browser window, then click Read key."));
     } catch (error) {
       setPhase("error");
       setMessage(error?.message || translate("Failed to start login"));
     }
-  }, [providerId, profile, poll]);
+  }, [providerId, profile]);
+
+  const handleRead = useCallback(async () => {
+    setReading(true);
+    setMessage("");
+    try {
+      const res = await fetch(
+        `/api/providers/web-login?provider=${encodeURIComponent(providerId)}&read=1`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (data.status === "success") {
+        setPhase("success");
+        setMessage(data.email ? `${translate("Signed in as")} ${data.email}` : translate("Connection saved"));
+        if (typeof onConnected === "function") onConnected();
+      } else if (data.status === "error" || data.status === "cancelled" || data.status === "timeout") {
+        setPhase("error");
+        setMessage(data.error || translate("Login failed"));
+      } else {
+        setMessage(data.error || translate("No login found yet"));
+      }
+    } catch (error) {
+      setMessage(error?.message || translate("Failed to read login"));
+    } finally {
+      setReading(false);
+    }
+  }, [providerId, onConnected]);
 
   const handleCancel = useCallback(() => {
-    fetch(`/api/providers/web-login?provider=${encodeURIComponent(providerId)}`, { method: "DELETE" }).catch(() => {});
-    stopPolling();
+    closeBrowser();
     setPhase("idle");
     setMessage("");
-  }, [providerId, stopPolling]);
+  }, [closeBrowser]);
 
   const handleNewProfile = useCallback(() => {
     const name = window.prompt(translate("New browser profile name (e.g. work, personal):"), "");
@@ -190,7 +173,7 @@ export default function WebLoginButton({ providerId, onConnected, size = "sm" })
         <div className="flex flex-col gap-4">
           <p className="text-xs text-text-muted">
             {translate(
-              "A Chrome window opens on a shared browser profile. Log in there — the session is captured automatically. One Google login in a profile makes every other provider a single “Continue with Google” click."
+              "A Chrome window opens on a shared browser profile and stays open. Log in there by hand, then click “Read key” to capture the session. One Google login in a profile makes every other provider a single “Continue with Google” click."
             )}
           </p>
 
@@ -277,7 +260,14 @@ export default function WebLoginButton({ providerId, onConnected, size = "sm" })
             {phase === "success" ? (
               <Button onClick={handleClose} fullWidth>{translate("Done")}</Button>
             ) : busy ? (
-              <Button onClick={handleCancel} variant="ghost" fullWidth>{translate("Cancel")}</Button>
+              <>
+                <Button onClick={handleRead} fullWidth disabled={reading || phase === "opening"}>
+                  {reading ? translate("Reading…") : translate("Read key")}
+                </Button>
+                <Button onClick={handleCancel} variant="ghost" fullWidth disabled={reading}>
+                  {translate("Close browser")}
+                </Button>
+              </>
             ) : (
               <>
                 <Button onClick={handleStart} fullWidth disabled={phase === "error" && !message}>

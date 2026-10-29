@@ -25,7 +25,10 @@ function errorResponse(status, message) {
   );
 }
 
-function statusForAdapterError(message) {
+export function statusForAdapterError(message) {
+  // Upstream 401 = expired web session; surface it as 401 so chatCore can
+  // refresh/rotate connections instead of swallowing it as a 502.
+  if (/(?:\bHTTP[\s_-]*401\b|"code"\s*:\s*401\b|loginUrl)/i.test(message)) return 401;
   if (/storage state|credentials|connection ID/i.test(message)) return 401;
   if (
     /(?:\bHTTP[_\s-]*429\b|\bstatus\s+429\b|\brate[-_\s]?limit(?:ed)?\b|\bquota\s+(?:exhausted|reached|exceeded)\b)/i.test(
@@ -79,8 +82,13 @@ export class XiaomiMiMoWebExecutor extends BaseExecutor {
           transformedBody: input.body,
         };
       }
+      const status = statusForAdapterError(message);
+      const finalMessage =
+        status === 401
+          ? `${message} — the aistudio.xiaomimimo.com web session is expired. Re-connect the provider with fresh cookies (needs passToken + serviceToken, not just deviceId).`
+          : message;
       return {
-        response: errorResponse(statusForAdapterError(message), message),
+        response: errorResponse(status, finalMessage),
         url: XIAOMIMIMO_WEB_URL,
         headers: {},
         transformedBody: input.body,

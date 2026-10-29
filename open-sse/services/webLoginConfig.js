@@ -58,6 +58,16 @@ export const WEB_LOGIN_CONFIGS = {
       }
     },
   },
+  "qwen-web": {
+    loginUrl: "https://www.qianwen.com/",
+    cookieDomain: ".qianwen.com",
+    // `isg` is the session cookie the page's security SDK sets after login;
+    // `tfstk` rides along and enriches the jar without gating on it.
+    tokenSources: [
+      { type: "cookie", name: "isg" },
+      { type: "cookie", name: "tfstk", optional: true },
+    ],
+  },
   "uc-web": {
     loginUrl: "https://uncensored.com/",
     cookieDomain: ".uncensored.com",

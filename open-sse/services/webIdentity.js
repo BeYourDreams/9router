@@ -221,6 +221,21 @@ const PROBES = {
     return OK(email.includes("@") ? email : "");
   },
 
+  async "qwen-web"(credential) {
+    const jar = cookieJar(credential);
+    if (!jar.get("isg")) return REJECTED("Missing isg session cookie");
+    const res = await request("https://chat2-api.qianwen.com/api/v1/model/list?biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&la=zh-CN&tz=Asia%2FShanghai&wv=4.12.0&ve=4.12.0", {
+      headers: { Cookie: credential, Accept: "application/json", Origin: "https://www.qianwen.com", Referer: "https://www.qianwen.com/" },
+    });
+    if (!res.status) return UNKNOWN(res.error);
+    if (res.status === 401 || res.status === 403) return REJECTED("qianwen.com session cookie is invalid or expired");
+    if (!res.ok) return UNKNOWN(`qianwen.com returned HTTP ${res.status}`);
+    let json = null;
+    try { json = JSON.parse(res.text); } catch { return UNKNOWN("qianwen.com returned invalid JSON"); }
+    if (Number(json?.code) !== 0) return REJECTED("qianwen.com rejected the session cookie");
+    return OK("");
+  },
+
   async "chatglm-web"(credential) {
     // The session is a Cookie header (or bare JWT) with a `chatglm_token` cookie.
     const jar = cookieJar(credential);

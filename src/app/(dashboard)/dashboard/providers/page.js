@@ -419,7 +419,7 @@ export default function ProvidersPage() {
         </select>
       </div>
 
-      {!hasAnyResult && (
+{!hasAnyResult && (
         <div className="text-center py-8 border border-dashed border-border rounded-xl">
           <span className="material-symbols-outlined text-[32px] text-text-muted mb-2">
             search_off
@@ -428,6 +428,47 @@ export default function ProvidersPage() {
             No providers match your search or filters
           </p>
         </div>
+      )}
+
+      {/* Web Providers — authenticated by a pasted browser/session cookie */}
+      {webCookieEntries.length > 0 && (
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
+            Web Providers{" "}
+          </h2>
+          <button
+            onClick={() => handleBatchTest("cookie")}
+            disabled={!!testingMode}
+            className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto sm:py-1.5 ${
+              testingMode === "cookie"
+                ? "bg-primary/20 border-primary/40 text-primary animate-pulse"
+                : "bg-bg border-border text-text-muted hover:text-text-main hover:border-primary/40"
+            }`}
+            title="Test all Web connections"
+            aria-label="Test all Web provider connections"
+          >
+            <span
+              className={`material-symbols-outlined text-[14px]${testingMode === "cookie" ? " animate-spin" : ""}`}
+            >
+              play_arrow
+            </span>
+            {testingMode === "cookie" ? "Testing..." : "Test All"}
+          </button>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+          {webCookieEntries.map(([key, info]) => (
+            <ApiKeyProviderCard
+              key={key}
+              providerId={key}
+              provider={info}
+              stats={getProviderStats(key, "cookie")}
+              authType="cookie"
+              onToggle={(active) => handleToggleProvider(key, "cookie", active)}
+            />
+          ))}
+        </div>
+      </div>
       )}
 
       {/* Custom Providers (OpenAI/Anthropic Compatible) — dynamic */}
@@ -637,48 +678,7 @@ export default function ProvidersPage() {
             Show all {apikeyEntries.length} providers
           </button>
         )}
-      </div>
-      )}
-
-      {/* Web Providers — authenticated by a pasted browser/session cookie */}
-      {webCookieEntries.length > 0 && (
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
-            Web Providers{" "}
-          </h2>
-          <button
-            onClick={() => handleBatchTest("cookie")}
-            disabled={!!testingMode}
-            className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:w-auto sm:py-1.5 ${
-              testingMode === "cookie"
-                ? "bg-primary/20 border-primary/40 text-primary animate-pulse"
-                : "bg-bg border-border text-text-muted hover:text-text-main hover:border-primary/40"
-            }`}
-            title="Test all Web connections"
-            aria-label="Test all Web provider connections"
-          >
-            <span
-              className={`material-symbols-outlined text-[14px]${testingMode === "cookie" ? " animate-spin" : ""}`}
-            >
-              play_arrow
-            </span>
-            {testingMode === "cookie" ? "Testing..." : "Test All"}
-          </button>
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
-          {webCookieEntries.map(([key, info]) => (
-            <ApiKeyProviderCard
-              key={key}
-              providerId={key}
-              provider={info}
-              stats={getProviderStats(key, "cookie")}
-              authType="cookie"
-              onToggle={(active) => handleToggleProvider(key, "cookie", active)}
-            />
-          ))}
-        </div>
-      </div>
+</div>
       )}
 
       <AddCompatibleModal

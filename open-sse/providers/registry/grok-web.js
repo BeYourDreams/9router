@@ -15,7 +15,8 @@ export default {
   },
   category: "webCookie",
   authType: "cookie",
-  // Image + video only: Grok's web chat is rate-gated, but Imagine works.
+  hidden: true, // foreign: remove until local access restored
+    // Image + video only: Grok's web chat is rate-gated, but Imagine works.
   serviceKinds: ["image", "video"],
   videoConfig: { executorDriven: true },
   authHint: "Paste your full grok.com Cookie header (sso + cf_clearance — needed for image/video generation)",
@@ -23,7 +24,7 @@ export default {
     baseUrl: "https://grok.com/rest/app-chat/conversations/new",
     format: "grok-web",
     authType: "cookie",
-  },
+    },
   models: [
     { id: "grok-image", name: "Grok Imagine Image", params: ["n", "size"], kind: "image" },
     { id: "grok-video", name: "Grok Imagine Video", params: ["seconds", "size"], kind: "video" },

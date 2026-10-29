@@ -71,7 +71,9 @@ function openAICompletionToResponses(responseBody, customToolNames = null) {
     });
   }
 
-  const usage = responseBody.usage || {};
+const usage = responseBody.usage || {};
+  const cacheRead = usage.cache_read_input_tokens || usage.cached_tokens || usage.prompt_tokens_details?.cached_tokens || 0;
+  const cacheCreate = usage.cache_creation_input_tokens || 0;
   const status = choice.finish_reason === "tool_calls" ? "completed" : (choice.finish_reason === "stop" ? "completed" : (choice.finish_reason || "completed"));
 
   return {
@@ -87,6 +89,8 @@ function openAICompletionToResponses(responseBody, customToolNames = null) {
       input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
       output_tokens: usage.completion_tokens || usage.output_tokens || 0,
       total_tokens: usage.total_tokens || (usage.prompt_tokens || 0) + (usage.completion_tokens || 0),
+      ...(cacheRead > 0 ? { prompt_tokens_details: { cached_tokens: cacheRead } } : {}),
+      ...(cacheCreate > 0 ? { prompt_tokens_details: { ...usage.prompt_tokens_details, cache_creation_tokens: cacheCreate } } : {}),
     },
   };
 }

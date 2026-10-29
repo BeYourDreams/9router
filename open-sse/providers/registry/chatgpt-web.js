@@ -15,6 +15,7 @@ export default {
   },
   category: "webCookie",
   authType: "cookie",
+  hidden: true, // foreign: remove until local access restored
   // LLM + tools work over plain HTTP, but the provider is parked on image
   // until the chat path has more mileage. Flip "llm" back in when it does.
   serviceKinds: ["image"],

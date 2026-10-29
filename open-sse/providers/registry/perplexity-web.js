@@ -15,7 +15,8 @@ export default {
   },
   category: "webCookie",
   authType: "cookie",
-  // LLM-only provider, parked: no service kind means it stays out of every
+  hidden: true, // foreign: remove until local access restored
+    // LLM-only provider, parked: no service kind means it stays out of every
   // dashboard list while the code and saved connections remain intact.
   serviceKinds: [],
   authHint: "Paste your __Secure-next-auth.session-token cookie value from perplexity.ai",
@@ -23,7 +24,7 @@ export default {
     baseUrl: "https://www.perplexity.ai/rest/sse/perplexity_ask",
     format: "perplexity-web",
     authType: "cookie",
-  },
+    },
   models: [
     { id: "pplx-auto", name: "Perplexity Auto (Free)" },
     { id: "pplx-sonar", name: "Perplexity Sonar" },

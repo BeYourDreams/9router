@@ -15,7 +15,8 @@ export default {
   },
   category: "webCookie",
   authType: "cookie",
-  // No "llm": chat models stay API-reachable but are hidden from LLM lists —
+  hidden: true, // foreign: remove until local access restored
+    // No "llm": chat models stay API-reachable but are hidden from LLM lists —
   // this provider is surfaced through the image media pages only.
   serviceKinds: ["image"],
   authHint: "Paste your __Secure-1PSID (and __Secure-1PSIDTS) cookie value(s) from gemini.google.com",
@@ -23,7 +24,7 @@ export default {
     baseUrl: "https://gemini.google.com/app",
     format: "openai",
     authType: "cookie",
-  },
+    },
   // `supportsReasoning` is omitted deliberately: the executor drives the
   // gemini.google.com web UI by typing a prompt, so it has no thinking-budget
   // control to set and never surfaces `reasoning_content`. Tool calling is
