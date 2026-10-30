@@ -1,6 +1,6 @@
 // `npm start` wrapper.
 //
-// Two failure modes this exists to prevent:
+// Three failure modes this exists to prevent:
 //
 //  1. MODULE_NOT_FOUND for `.next/standalone/custom-server.js` — that file only
 //     appears after a successful `next build` + a copy step, so a missing or
@@ -10,15 +10,22 @@
 //     `npm run build` copies it via the `postbuild` lifecycle hook, but any
 //     other path into the build (e.g. `npx next build`, which is what this
 //     wrapper previously ran) skips that hook and ships a page with no JS.
+//  3. Serving code that is older than the tree — `npm start` used to die on a
+//     missing build and otherwise happily launch a stale one, so an edited
+//     `src/` looked like "my change did nothing".
 //
-// Both are handled here: build when needed, and always re-run the asset copy so
-// the served tree is guaranteed complete regardless of how the build happened.
+// Handled here: rebuild when the build is older than the sources, always re-run
+// the asset copy, and never do either while a server is live on this port —
+// `<distDir>/standalone` is that server's own working directory and `next build`
+// deletes it (EBUSY on Windows, a crashed instance everywhere else). A stale
+// build behind a live port is therefore a refusal with the fix in its message.
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { resolvePort, withPortEnv, portFlagFromArgv } from "./server-port.mjs";
 import { resolveDistDir, wantsSandbox, assertNotProductionPort } from "./dist-dir.mjs";
+import { isBuildStale, portOccupied } from "./build-state.mjs";
 
 const argv = process.argv.slice(2);
 
@@ -39,11 +46,6 @@ const standaloneDir = resolve(buildDir, "standalone");
 const serverPath = resolve(standaloneDir, "custom-server.js");
 const copyScript = resolve(projectRoot, "scripts", "copy-standalone-assets.mjs");
 const port = assertNotProductionPort(resolvePort(), { sandbox: wantsSandbox(argv) });
-
-// No automatic build here, by design: `next build` removes `.next/standalone`,
-// which is the live working directory of any server already running from it.
-// An auto-build on start therefore crashes the running instance (and on Windows
-// fails outright with EBUSY). Build explicitly with `npm run build` instead.
 
 function run(command, args, env) {
   return new Promise((done) => {
@@ -73,13 +75,26 @@ function assetsMissing() {
   );
 }
 
-if (!existsSync(serverPath)) {
-  console.error(
-    `\n[9router] No production build found.\n` +
-      `  Expected: ${serverPath}\n` +
-      `  Run \`npm run build\` first, then \`npm start\`.\n`
-  );
-  process.exit(1);
+// Rebuild only when the build is older than its inputs, and only when nothing is
+// serving that tree. `build-server.mjs` is invoked directly (not through npm) so
+// the memory caps and the sandbox dist dir carry over.
+if (isBuildStale({ projectRoot, distDir })) {
+  if (await portOccupied(port)) {
+    console.error(
+      `\n[9router] The build in ${distDir}/ is older than the sources, but port ${port} is taken\n` +
+        `  by a running server whose working directory is ${distDir}/standalone — rebuilding here\n` +
+        `  would kill it mid-task (and fail on Windows with EBUSY).\n` +
+        `  Either stop that server and re-run this, or verify on a sandbox:\n` +
+        `    npm run build -- --sandbox && node scripts/start-server.mjs --sandbox --port 20127\n`
+    );
+    process.exit(1);
+  }
+  console.log(`[9router] build is older than the sources — rebuilding in ${distDir}/ …`);
+  const buildCode = await run(process.execPath, [resolve(projectRoot, "scripts", "build-server.mjs")], withPortEnv(port));
+  if (buildCode !== 0) {
+    console.error(`\n[9router] Build failed (exit ${buildCode}); refusing to serve.`);
+    process.exit(buildCode);
+  }
 }
 
 // Always ensure the copy ran. `next build` alone leaves static/ out of the

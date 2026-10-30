@@ -44,7 +44,12 @@ was removed for this reason) cannot carry the flag into their own env.
 
 ## ⚠️ npm start build requirement
 
-- `npm start` runs `node scripts/start-server.mjs` which **requires** a prior `npm run build` (no auto-build any more)
+- `npm start` runs `node scripts/start-server.mjs`, which **auto-rebuilds** when `<distDir>/BUILD_ID`
+  is older than any build input (`src`, `open-sse`, `i18n`, `public`, `scripts`, `custom-server.js`,
+  `next.config.mjs`, …). A fresh build costs one mtime scan (~60 ms), not a compile.
+- It refuses to rebuild while the port is already serving: that server's working directory *is*
+  `<distDir>/standalone`, which `next build` deletes (EBUSY on Windows, a crashed instance otherwise).
+  So a stale build + a live 20128 is an error message pointing at `--sandbox`, never a silent kill.
 - The script exits with an error if `<distDir>/standalone/custom-server.js` is missing or assets are incomplete
 - Always `npm run build` (or `npm run build -- --sandbox`) before serving after code changes
 - `npm run build` is capped: heap ≈40% of RAM (2–8GB). `NINEROUTER_BUILD_HEAP_MB` /
