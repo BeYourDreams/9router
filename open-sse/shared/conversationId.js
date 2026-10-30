@@ -143,6 +143,11 @@ export function recallUpstreamConversationId({ credentials, body, scope = "" } =
   return upstreamConversationIds.get(stableKey({ credentials, body, scope })) || null;
 }
 
+/** Test hook: drop every remembered upstream conversation id. */
+export function resetUpstreamConversations() {
+  upstreamConversationIds.clear();
+}
+
 function stableKey({ credentials, body, scope = "" } = {}) {
   let sessionId = "";
   try {

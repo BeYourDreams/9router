@@ -17,6 +17,7 @@ export const DEFAULT_PORT = 20128;
  * our node wrappers do not.
  */
 export function resolvePort(projectRoot = process.cwd()) {
+  // Environment variable takes highest priority
   const fromEnv = Number.parseInt(process.env.PORT, 10);
   if (Number.isInteger(fromEnv) && fromEnv > 0 && fromEnv < 65536) return fromEnv;
 

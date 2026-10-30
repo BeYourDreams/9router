@@ -25,7 +25,8 @@ import { ChatGptWebExecutor } from "./chatgpt-web.js";
 import { ChatGLMWebExecutor } from "./chatglm-web.js";
 import { XiaomiMiMoWebExecutor } from "./xiaomimimo-web.js";
 import { QwenWebExecutor } from "./qwen-web.js";
-import { OllamaLocalExecutor }
+import { InternWebExecutor } from "./intern-web.js";
+import { OllamaLocalExecutor } from "./ollama-local.js";
 import { CommandCodeExecutor } from "./commandcode.js";
 import { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 import { XiaomiMimoExecutor } from "./xiaomi-mimo.js";
@@ -72,6 +73,11 @@ const executors = {
   "chatglm-web": new ChatGLMWebExecutor(),
 "xiaomimimo-web": new XiaomiMiMoWebExecutor(),
   "qwen-web": new QwenWebExecutor(),
+  // Without a registered executor getExecutor() falls through to DefaultExecutor,
+  // which POSTs an OpenAI body to the SITE ROOT (https://discovery.intern-ai.org.cn)
+  // — 405 today, 401 {"msgCode":"A0202","msg":"user authenticate failed"} once the
+  // auth headers happen to line up. The web client talks to /api/orbit/v1/*.
+  "intern-web": new InternWebExecutor(),
   "ollama-local": new OllamaLocalExecutor(),
   commandcode: new CommandCodeExecutor(),
   "xiaomi-tokenplan": new XiaomiTokenplanExecutor(),
@@ -133,6 +139,7 @@ export { MuseWebExecutor } from "./muse-web.js";
 export { ChatGptWebExecutor } from "./chatgpt-web.js";
 export { ChatGLMWebExecutor } from "./chatglm-web.js";
 export { XiaomiMiMoWebExecutor } from "./xiaomimimo-web.js";
+export { InternWebExecutor } from "./intern-web.js";
 export { OllamaLocalExecutor } from "./ollama-local.js";
 export { CommandCodeExecutor } from "./commandcode.js";
 export { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";

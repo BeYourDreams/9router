@@ -289,24 +289,40 @@ const PROBES = {
     const jar = cookieJar(credential);
     const token = jar.get("uaa-token");
     if (!token) return REJECTED("Missing uaa-token cookie");
+    const origin = "https://discovery.intern-ai.org.cn";
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json, text/plain, */*",
+      Origin: origin,
+      Referer: `${origin}/chat`,
+    };
+    // Two probes, because they fail in different ways:
+    //  · POST /getUserInfo {jwt}  — the identity endpoint (nickname/uid).
+    //  · GET  /models             — the gateway's own auth check; answers 401
+    //    {"msgCode":"A0202","msg":"user authenticate failed"} even when the
+    //    user-center path is reachable, so it is the authoritative answer.
+    // A bad token must be reported "invalid", never "unknown".
     const res = await request("https://discovery.intern-ai.org.cn/api/user-center/v1/users/getUserInfo", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-        Origin: "https://discovery.intern-ai.org.cn",
-        Referer: "https://discovery.intern-ai.org.cn/",
-      },
+      method: "POST",
+      headers,
+      body: JSON.stringify({ jwt: token }),
     });
-    if (!res.status) return UNKNOWN(res.error);
     if (res.status === 401 || res.status === 403) return REJECTED("uaa-token is invalid or expired");
+    const models = await request("https://discovery.intern-ai.org.cn/api/orbit/v1/models", { headers });
+    if (models.status === 401 || models.status === 403) return REJECTED("uaa-token is invalid or expired");
+    if (!res.status && models.status === 200) return OK("");
+    if (!res.status) return UNKNOWN(res.error);
     if (!res.ok) return UNKNOWN(`Intern returned HTTP ${res.status}`);
     let json = null;
     try { json = JSON.parse(res.text); } catch { return UNKNOWN("Intern returned invalid JSON"); }
-    if (Number(json?.code) !== 0) return REJECTED("Intern rejected the uaa-token");
-    const data = json?.data;
-    if (!data) return REJECTED("Intern did not return a profile");
+    if (Number(json?.code) !== 0 || !json?.data) return REJECTED("Intern rejected the uaa-token");
+    const data = json.data;
     const email = typeof data.sso_email === "string" ? data.sso_email : "";
-    return OK(email);
+    // Intern accounts are phone/GitHub logins, so sso_email is usually empty and
+    // the row would be named after the provider. Fall back to the visible handle.
+    const handle = typeof data.nickname === "string" ? data.nickname : "";
+    return OK(email || (handle ? `${handle}@intern` : ""));
   },
 
 };

@@ -52,6 +52,26 @@ function filterModelsInCooldown(comboName, models) {
   return models.filter((m) => !isModelInCooldown(comboName, m));
 }
 
+// Only a failure that names its own recovery window — or a dead credential — may
+// park a combo member so later requests skip it. A 5xx, a timeout, an exception,
+// or our OWN pacing queue giving up says "this attempt failed", not "this member
+// is down". Parking those is the bug: combos mix accounts per member and account
+// rotation happens one layer down (chat.js loops connections inside one member
+// attempt), so a parked member is never attempted and its healthy second account
+// is never reached.
+const PARK_STATUSES = new Set([401, 402, 403, 404, 429]);
+
+function shouldParkMember(status, errorCode, retryAfter) {
+  if (retryAfter) return true;                     // upstream stated when to come back
+  if (errorCode === "web_throttle_timeout") return false; // our queue, not their limit
+  return PARK_STATUSES.has(status);
+}
+
+/** Test hook: forget every combo member cooldown. */
+export function resetComboModelCooldowns() {
+  comboModelCooldownStore.clear();
+}
+
 // Peek a 2xx combo response
 // them untouched). For SSE, returns { outcome: "content"|"empty", finishReason, response }
 // where `response` is a faithful replay of the original stream (head buffer + live reader).
@@ -655,10 +675,12 @@ export async function handleComboChat({
       // Extract error info from response
       let errorText = result.statusText || "";
       let retryAfter = null;
+      let errorCode = null;
       try {
         const errorBody = await result.clone().json();
         errorText = errorBody?.error?.message || errorBody?.error || errorBody?.message || errorText;
         retryAfter = errorBody?.retryAfter || null;
+        errorCode = errorBody?.error?.code || errorBody?.code || null;
       } catch {
         // Ignore JSON parse errors
       }
@@ -697,24 +719,20 @@ export async function handleComboChat({
         continue;
       }
 
-      // For transient errors (503/502/504), wait for cooldown before falling through
-      // so a briefly-overloaded provider gets a chance to recover rather than being
-      // skipped immediately (fixes: combo falls through on transient 503)
-      if (cooldownMs && cooldownMs > 0 && cooldownMs <= 5000 &&
-          (result.status === 503 || result.status === 502 || result.status === 504)) {
-        log.info("COMBO", `Model ${modelStr} transient ${result.status}, waiting ${cooldownMs}ms before next`);
-        await new Promise(r => setTimeout(r, cooldownMs));
-      }
+      // No in-request sleep before rotating: waiting on a member that just failed
+      // only delays the next member, which is a different provider/account.
 
       // Fallback to next model
       // Record model cooldown so future requests skip it until recovered
       const cooldownMsFinal = retryAfter
         ? new Date(retryAfter).getTime() - Date.now()
         : (cooldownMs && cooldownMs > 0 ? cooldownMs : DEFAULT_MODEL_COOLDOWN_MS);
-      if (cooldownMsFinal > 0) {
+      if (cooldownMsFinal > 0 && shouldParkMember(result.status, errorCode, retryAfter)) {
         const until = getUnavailableUntil(cooldownMsFinal);
         setModelCooldown(comboName, modelStr, until);
         log.info("COMBO", `Model ${modelStr} set cooldown until ${until} (${Math.round(cooldownMsFinal / 1000)}s)`);
+      } else if (cooldownMsFinal > 0) {
+        log.info("COMBO", `Model ${modelStr} failed transiently (${result.status}), not parked — retried on the next request`);
       }
       lastError = errorText || String(result.status);
       if (!lastStatus) lastStatus = result.status;
@@ -724,10 +742,8 @@ export async function handleComboChat({
       if (comboStrategy === "smart" && sessionId && modelStr === activeStickyModel) {
         clearStickyComboSession(comboName, sessionId);
       }
-      // Set default cooldown on exception too
-      const until = getUnavailableUntil(DEFAULT_MODEL_COOLDOWN_MS);
-      setModelCooldown(comboName, modelStr, until);
-      log.info("COMBO", `Model ${modelStr} exception, set cooldown until ${until} (${Math.round(DEFAULT_MODEL_COOLDOWN_MS / 1000)}s)`);
+      // An exception (network drop, our own throttle queue) is not a stated outage:
+      // do NOT park, or the member's other accounts go unreachable for a full minute.
       lastError = error.message || String(error);
       if (!lastStatus) lastStatus = 500;
       log.warn("COMBO", `Model ${modelStr} threw error, trying next`, { error: lastError });

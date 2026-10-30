@@ -7,6 +7,7 @@ import ProviderIcon from "./ProviderIcon";
 import CapacityBadges from "./CapacityBadges";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
+import { findMissingAddedValues } from "@/shared/utils/modelCatalogLookup";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
 import { parseSearchQuery, matchesSearch } from "@/shared/utils/modelSearchFilter";
 import { getDeactivatedProviderIds } from "@/shared/utils/connectionStatus";
@@ -225,8 +226,10 @@ export default function ModelSelectModal({
 
   const allProviders = useMemo(() => ({ ...OAUTH_PROVIDERS, ...FREE_PROVIDERS, ...FREE_TIER_PROVIDERS, ...APIKEY_PROVIDERS }), []);
 
-  // Group models by provider with priority order
-  const groupedModels = useMemo(() => {
+  // Unfiltered provider catalog: every model the picker can resolve for a visible
+  // provider, BEFORE the disable/enable filters that groupedModels applies below.
+  // The "Remove Missing" oracle needs this - a disabled model still exists upstream.
+  const catalogGroups = useMemo(() => {
     const groups = {};
 
     // Kinds where the provider IS the model (no per-model selection needed)
@@ -467,6 +470,17 @@ export default function ModelSelectModal({
       }
     });
 
+    return groups;
+  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, kindFilter, effectiveConnections, deactivatedProviderIds, cursorModels, zedModels]);
+
+  // Display list: drop models the user disabled per provider, or that a connection
+  // whitelisted away.
+  const groupedModels = useMemo(() => {
+    const groups = {};
+    Object.entries(catalogGroups).forEach(([providerId, group]) => {
+      groups[providerId] = { ...group, models: [...group.models] };
+    });
+
     // Filter out disabled models per provider (disabled keyed by storage alias OR providerId)
     Object.entries(groups).forEach(([providerId, group]) => {
       const aliasKey = getProviderAlias(providerId);
@@ -502,7 +516,7 @@ export default function ModelSelectModal({
     });
 
     return groups;
-  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, effectiveConnections, deactivatedProviderIds, cursorModels, zedModels]);
+  }, [catalogGroups, filteredActiveProviders, disabledModels]);
 
   // Parse search query into structured query (regex, positive tokens, negative tokens)
   const parsedQuery = useMemo(() => parseSearchQuery(searchQuery), [searchQuery]);
@@ -606,6 +620,21 @@ export default function ModelSelectModal({
     }
   };
 
+  // Selected values the picker cannot list, removed without a network probe: an
+  // entry is dropped as soon as nothing in the catalog claims it.
+  const missingAddedValues = useMemo(
+    () => findMissingAddedValues(addedModelValues, catalogGroups,
+      { allProviders, combos, customModels, modelAliases }),
+    [addedModelValues, catalogGroups, allProviders, combos, customModels, modelAliases],
+  );
+
+  const handleRemoveMissing = () => {
+    if (missingAddedValues.length === 0) return;
+    const items = missingAddedValues.map((v) => ({ value: v, name: v }));
+    if (onDeselectBatch) onDeselectBatch(items);
+    else if (onDeselect) items.forEach((m) => onDeselect(m));
+  };
+
   const handleSelect = (model) => {
     const value = model?.value || model?.name || model;
     const isAdded = addedModelValues.includes(value);
@@ -685,12 +714,18 @@ export default function ModelSelectModal({
           </div>
         </div>
 
-        {!closeOnSelect && visibleModels.length > 0 && (
+        {!closeOnSelect && (visibleModels.length > 0 || missingAddedValues.length > 0) && (
           <div className="flex items-center justify-between px-1 text-[11px] text-text-muted">
             <span className="flex items-center gap-1.5">
               <span>{visibleModels.length} models</span>
               {addedModelValues.length > 0 && (
                 <span className="text-primary font-medium">({addedModelValues.length} selected)</span>
+              )}
+              {missingAddedValues.length > 0 && (
+                <span className="text-red-500 font-medium"
+                  title="Selected models the current catalog cannot list">
+                  ({missingAddedValues.length} missing)
+                </span>
               )}
             </span>
             <div className="flex items-center gap-1.5">
@@ -712,6 +747,16 @@ export default function ModelSelectModal({
                   title="Deselect all filtered models"
                 >
                   Deselect All ({addedModelValues.length})
+                </button>
+              )}
+              {missingAddedValues.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleRemoveMissing}
+                  title={`Remove selected models the catalog cannot list:\n${missingAddedValues.slice(0, 8).join(", ")}${missingAddedValues.length > 8 ? " …" : ""}`}
+                  className="px-2 py-0.5 rounded text-[11px] font-medium bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors cursor-pointer"
+                >
+                  Remove Missing ({missingAddedValues.length})
                 </button>
               )}
             </div>

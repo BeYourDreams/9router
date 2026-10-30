@@ -1105,7 +1105,7 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders, getCaps }) 
   );
 }
 
-function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveTop, onMoveUp, onMoveDown, onRemove }) {
+function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveTop, onMoveBottom, onMoveUp, onMoveDown, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -1180,6 +1180,14 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveTop, onMov
           title="Move to first"
         >
           <span className="material-symbols-outlined text-[12px]">vertical_align_top</span>
+        </button>
+        <button
+          onClick={onMoveBottom}
+          disabled={isLast}
+          className={`p-0.5 rounded ${isLast ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5"}`}
+          title="Move to last"
+        >
+          <span className="material-symbols-outlined text-[12px]">vertical_align_bottom</span>
         </button>
         <button
           onClick={onMoveUp}
@@ -1301,6 +1309,11 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
     setModels([models[index], ...models.filter((_, i) => i !== index)]);
   };
 
+  const handleMoveBottom = (index) => {
+    if (index === models.length - 1) return;
+    setModels([...models.filter((_, i) => i !== index), models[index]]);
+  };
+
   const handleMoveDown = (index) => {
     if (index === models.length - 1) return;
     const newModels = [...models];
@@ -1366,6 +1379,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
                         setModels(updated);
                       }}
                       onMoveTop={() => handleMoveTop(index)}
+                      onMoveBottom={() => handleMoveBottom(index)}
                       onMoveUp={() => handleMoveUp(index)}
                       onMoveDown={() => handleMoveDown(index)}
                       onRemove={() => handleRemoveModel(index)}

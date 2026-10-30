@@ -1,4 +1,4 @@
-// Qwen (qianwen.com) web provider — clean-room browser turn.
+// Qwen web provider (qianwen.com) — clean-room browser turn.
 //
 // Auth: cookie-based. The user pastes a login cookie header (or a Playwright
 // storageState JSON) from DevTools → Cookies → qianwen.com (the `isg` /
@@ -27,7 +27,7 @@ export default {
   ],
   uiAlias: "Qwen",
   display: {
-    name: "Qwen (qianwen.com)",
+    name: "Qwen web",
     icon: "auto_awesome",
     color: "#615CED",
     textIcon: "QW",

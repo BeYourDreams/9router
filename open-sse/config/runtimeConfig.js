@@ -125,6 +125,38 @@ export function resolveRetryEntry(entry) {
   };
 }
 
+// Request pacing for web-cookie providers (see services/webRequestThrottle.js).
+// These are the numbers the throttle reads at module load, so they are exported
+// here next to every other runtime knob rather than baked into that module.
+export const WEB_THROTTLE_ENABLED = process.env.WEB_THROTTLE_ENABLED !== "false";
+export const WEB_THROTTLE_CONFIG = {
+  // Minimum spacing between two requests leaving one account.
+  minIntervalMs: envMs("WEB_THROTTLE_MIN_INTERVAL_MS", 1200),
+  // Token bucket: burst capacity + the window it refills over.
+  burst: Number(process.env.WEB_THROTTLE_BURST) || 5,
+  resetMs: envMs("WEB_THROTTLE_RESET_MS", 10 * 1000),
+  // Concurrency cap per account.
+  maxConcurrent: Number(process.env.WEB_THROTTLE_MAX_CONCURRENT) || 2,
+  // Give up instead of queueing forever. Keep this well under a combo's patience:
+  // while a member sits in this queue the next member (often a different account)
+  // is not tried, so a long cap is a long stall, not extra protection.
+  maxWaitMs: envMs("WEB_THROTTLE_MAX_WAIT_MS", 5 * 1000),
+  penaltyMs: envMs("WEB_THROTTLE_PENALTY_MS", 60 * 1000),
+  maxPenaltyIntervalMs: envMs("WEB_THROTTLE_MAX_PENALTY_INTERVAL_MS", 30 * 1000),
+  maxPenaltyLevel: Number(process.env.WEB_THROTTLE_MAX_PENALTY_LEVEL) || 4,
+  // Words that mark an anti-bot challenge in a response body.
+  challengeMarkers: [
+    "captcha",
+    "are you a robot",
+    "unusual traffic",
+    "cf_chl",
+    "just a moment",
+    "checking your browser",
+    "verification required",
+    "rate limit exceeded",
+  ],
+};
+
 // Requests containing these texts will bypass provider
 export const SKIP_PATTERNS = [
   "Please write a 5-10 word title for the following conversation:"

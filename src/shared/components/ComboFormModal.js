@@ -9,7 +9,7 @@ import ModelSelectModal from "./ModelSelectModal";
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 
 // Inline editable model item
-function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveTop, onMoveUp, onMoveDown, onRemove }) {
+function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveTop, onMoveBottom, onMoveUp, onMoveDown, onRemove }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(model);
   const commit = () => {
@@ -36,6 +36,10 @@ function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveTop, onMoveUp,
         <button onClick={onMoveTop} disabled={isFirst}
           className={`p-0.5 rounded ${isFirst ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5"}`} title="Move to first">
           <span className="material-symbols-outlined text-[12px]">vertical_align_top</span>
+        </button>
+        <button onClick={onMoveBottom} disabled={isLast}
+          className={`p-0.5 rounded ${isLast ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5"}`} title="Move to last">
+          <span className="material-symbols-outlined text-[12px]">vertical_align_bottom</span>
         </button>
         <button onClick={onMoveUp} disabled={isFirst}
           className={`p-0.5 rounded ${isFirst ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5"}`} title="Move up">
@@ -102,6 +106,10 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
     if (i === 0) return;
     setModels([models[i], ...models.filter((_, idx) => idx !== i)]);
   };
+  const handleMoveBottom = (i) => {
+    if (i === models.length - 1) return;
+    setModels([...models.filter((_, idx) => idx !== i), models[i]]);
+  };
   const handleMoveDown = (i) => {
     if (i === models.length - 1) return;
     const a = [...models]; [a[i], a[i + 1]] = [a[i + 1], a[i]]; setModels(a);
@@ -153,6 +161,7 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
                     isFirst={index === 0} isLast={index === models.length - 1}
                     onEdit={(v) => { const a = [...models]; a[index] = v; setModels(a); }}
                     onMoveTop={() => handleMoveTop(index)}
+                    onMoveBottom={() => handleMoveBottom(index)}
                     onMoveUp={() => handleMoveUp(index)}
                     onMoveDown={() => handleMoveDown(index)}
                     onRemove={() => handleRemoveModel(index)} />
