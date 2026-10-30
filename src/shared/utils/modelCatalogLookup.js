@@ -78,3 +78,16 @@ export function findMissingAddedValues(values, groups, {
     .map((v) => v.trim())
     .filter((v) => !isKnown(v));
 }
+
+// Values the picker literally renders no chip/button for. Unlike the oracle above this
+// never consults the static registry, passthrough flags or aliases, so it also catches
+// the entries `findMissingAddedValues` deliberately refuses to report (a disconnected
+// provider, a passthrough id the page no longer offers) — those are exactly the ones the
+// user cannot un-tick. Removal stays one-click-per-entry, so a wrong verdict costs a
+// click, not a combo.
+export function findUnlistedAddedValues(values, listed) {
+  const shown = listed instanceof Set ? listed : new Set(listed || []);
+  return (Array.isArray(values) ? values : [])
+    .map((v) => (typeof v === "string" ? v.trim() : ""))
+    .filter((v) => v && !shown.has(v));
+}

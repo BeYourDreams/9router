@@ -7,7 +7,7 @@ import ProviderIcon from "./ProviderIcon";
 import CapacityBadges from "./CapacityBadges";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
-import { findMissingAddedValues } from "@/shared/utils/modelCatalogLookup";
+import { findMissingAddedValues, findUnlistedAddedValues } from "@/shared/utils/modelCatalogLookup";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
 import { parseSearchQuery, matchesSearch } from "@/shared/utils/modelSearchFilter";
 import { getDeactivatedProviderIds } from "@/shared/utils/connectionStatus";
@@ -628,6 +628,34 @@ export default function ModelSelectModal({
     [addedModelValues, catalogGroups, allProviders, combos, customModels, modelAliases],
   );
 
+  // Everything the list can actually render a chip for right now (provider groups after
+  // the disabled/enabledModels filters, plus combo chips). NOT catalogGroups: a model the
+  // user disabled or a connection whitelisted away is in the catalog but renders no button,
+  // which is exactly the "selected but unremovable" gap. Search is deliberately ignored —
+  // clearing it brings the chip back.
+  const listedValues = useMemo(() => {
+    const set = new Set();
+    Object.values(groupedModels).forEach((group) => {
+      group.models.forEach((m) => set.add(m.value));
+      if (allowProviderWildcard) set.add(`${group.alias || ""}/*`);
+    });
+    // Combo chips are hidden whenever a kind/cap filter is active, so under a filter a
+    // combo name really is unlistable here.
+    if (!kindFilter && !capFilter) combos.forEach((c) => set.add(c.name));
+    return set;
+  }, [groupedModels, combos, allowProviderWildcard, kindFilter, capFilter]);
+
+  const unlistedAddedValues = useMemo(
+    () => findUnlistedAddedValues(addedModelValues, listedValues),
+    [addedModelValues, listedValues],
+  );
+
+  const handleRemoveValue = (value) => {
+    const item = { value, name: value };
+    if (onDeselectBatch) onDeselectBatch([item]);
+    else if (onDeselect) onDeselect(item);
+  };
+
   const handleRemoveMissing = () => {
     if (missingAddedValues.length === 0) return;
     const items = missingAddedValues.map((v) => ({ value: v, name: v }));
@@ -727,6 +755,7 @@ export default function ModelSelectModal({
                   ({missingAddedValues.length} missing)
                 </span>
               )}
+
             </span>
             <div className="flex items-center gap-1.5">
               {visibleUnadded.length > 0 && (
@@ -798,6 +827,32 @@ export default function ModelSelectModal({
                   </button>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Selected entries the list cannot render a chip for — removable one by one */}
+        {unlistedAddedValues.length > 0 && (onDeselect || onDeselectBatch) && (
+          <div>
+            <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 bg-surface py-0.5 z-10">
+              <span className="material-symbols-outlined text-amber-500 text-[14px]">hidden</span>
+              <span className="text-xs font-medium text-amber-500">Not in list</span>
+              <span className="text-[10px] text-text-muted">({unlistedAddedValues.length})</span>
+              <span className="text-[10px] text-text-muted">- selected, no longer offered: click to remove</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {unlistedAddedValues.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => handleRemoveValue(value)}
+                  title="Remove from selection"
+                  className="px-2 py-1 rounded-xl text-xs font-medium transition-all border hover:cursor-pointer flex items-center gap-1 bg-surface border-border text-text-muted hover:border-red-500/50 hover:text-red-500"
+                >
+                  <span className="material-symbols-outlined leading-none" style={{ fontSize: "12px" }}>close</span>
+                  {value}
+                </button>
+              ))}
             </div>
           </div>
         )}

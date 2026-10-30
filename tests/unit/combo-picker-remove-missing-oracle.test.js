@@ -109,3 +109,32 @@ describe("findMissingAddedValues", () => {
     expect(call(live)).toEqual(live);
   });
 });
+
+// findUnlistedAddedValues backs the "Not in list" chips: it only compares against what
+// the picker rendered, so it catches what the catalog oracle must not report.
+import { findUnlistedAddedValues } from "@/shared/utils/modelCatalogLookup";
+
+describe("findUnlistedAddedValues", () => {
+  it("reports selected values the picker rendered no chip for", () => {
+    expect(findUnlistedAddedValues([`${ALIAS}/${REAL_ID}`, "gone/provider"], [`${ALIAS}/${REAL_ID}`]))
+      .toEqual(["gone/provider"]);
+  });
+
+  it("keeps a passthrough id the picker still lists (oracle would stay silent too)", () => {
+    if (!PT_ID) return;
+    const value = `${PT_ALIAS}/who-knows`;
+    expect(findUnlistedAddedValues([value], new Set([value]))).toEqual([]);
+  });
+
+  it("ignores blanks and non-strings, trims before comparing", () => {
+    expect(findUnlistedAddedValues([null, undefined, 42, "", "  "], [])).toEqual([]);
+    expect(findUnlistedAddedValues([`  ${ALIAS}/${REAL_ID}  `], [`${ALIAS}/${REAL_ID}`])).toEqual([]);
+  });
+
+  it("never deletes on its own - a missing callback leaves the value untouched", () => {
+    // The picker only renders these chips when onDeselect/onDeselectBatch exists, and
+    // each chip removes exactly one value (no batch sweep), so a false verdict costs a
+    // click rather than a combo row.
+    expect(findUnlistedAddedValues(["a/b"], [])).toEqual(["a/b"]);
+  });
+});
