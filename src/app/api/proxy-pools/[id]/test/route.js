@@ -3,16 +3,34 @@ import { getProxyPoolById, updateProxyPool } from "@/models";
 import { testProxyUrl } from "@/lib/network/proxyTest";
 import { fetch as undiciFetch } from "undici";
 
-async function testVercelRelay(relayUrl, timeoutMs = 10000) {
+// Where a relay probe sends its traffic. httpbin.org rate-limits and geo-blocks,
+// so a failing relay can read as a failing httpbin. Override with
+// PROXY_RELAY_TEST_URL (or a `testUrl` in the POST body) — an origin your network
+// definitely reaches, e.g. https://cloudflare.com/cdn-cgi/trace.
+const DEFAULT_RELAY_TEST_URL = "https://httpbin.org/get";
+
+function relayTarget(bodyTestUrl) {
+  const configured = String(bodyTestUrl || "").trim() || String(process.env.PROXY_RELAY_TEST_URL || "").trim() || DEFAULT_RELAY_TEST_URL;
+  try {
+    const parsed = new URL(configured);
+    return { target: `${parsed.protocol}//${parsed.host}`, path: `${parsed.pathname}${parsed.search}` };
+  } catch {
+    const parsed = new URL(DEFAULT_RELAY_TEST_URL);
+    return { target: `${parsed.protocol}//${parsed.host}`, path: `${parsed.pathname}${parsed.search}` };
+  }
+}
+
+async function testVercelRelay(relayUrl, timeoutMs = 10000, bodyTestUrl = "") {
   const controller = new AbortController();
   const startedAt = Date.now();
   const timer = setTimeout(() => controller.abort(new Error("Relay test timed out")), timeoutMs);
+  const { target, path } = relayTarget(bodyTestUrl);
   try {
     const res = await undiciFetch(relayUrl, {
       method: "GET",
       headers: {
-        "x-relay-target": "https://httpbin.org",
-        "x-relay-path": "/get",
+        "x-relay-target": target,
+        "x-relay-path": path,
         "user-agent": "9Router-Test",
       },
       signal: controller.signal,
@@ -52,8 +70,12 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: "Proxy pool not found" }, { status: 404 });
     }
 
+    // A `testUrl` in the body overrides the probe target for this one test.
+    let bodyTestUrl = "";
+    try { bodyTestUrl = (await request.json())?.testUrl || ""; } catch { /* body optional */ }
+
     const result = proxyPool.type === "vercel" || proxyPool.type === "cloudflare" || proxyPool.type === "deno" || proxyPool.type === "netlify"
-      ? await testVercelRelay(proxyPool.proxyUrl)
+      ? await testVercelRelay(proxyPool.proxyUrl, 10000, bodyTestUrl)
       : await testProxyUrl({ proxyUrl: proxyPool.proxyUrl });
     const now = new Date().toISOString();
 
