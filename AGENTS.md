@@ -1,3 +1,9 @@
+## ⚠️ npm start build requirement
+
+- `npm start` runs `node scripts/start-server.mjs` which **requires** a prior `npm run build`
+- The script will exit with error if `.next/standalone/custom-server.js` is missing or assets are incomplete
+- Always run `npm run build` (or `npm run dev`) before `npm start` after code changes
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know
