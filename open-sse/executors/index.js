@@ -25,7 +25,7 @@ import { ChatGptWebExecutor } from "./chatgpt-web.js";
 import { ChatGLMWebExecutor } from "./chatglm-web.js";
 import { XiaomiMiMoWebExecutor } from "./xiaomimimo-web.js";
 import { QwenWebExecutor } from "./qwen-web.js";
-import { OllamaLocalExecutor } from "./ollama-local.js";
+import { OllamaLocalExecutor }
 import { CommandCodeExecutor } from "./commandcode.js";
 import { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 import { XiaomiMimoExecutor } from "./xiaomi-mimo.js";
