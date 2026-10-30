@@ -15,6 +15,8 @@
 - **Providers**: keep full `LLM|id|secret` (Muse) key strings opaque in bulk-add instead of splitting on the first pipe into name/key, auto-naming them LLM 1, LLM 2, …
 - **DeepSeek**: replace the vendored PoW hash implementation with a noble-hashes keccak port (DeepSeekHashV1, SHA3-256 with round 0 skipped), shrinking `deepseek-pow-hash.js` by ~430 lines
 - **GitHub Copilot**: apply Claude 5.5 thinking rules to Copilot's dotted model ids (`claude-opus-5.5*`, `claude-sonnet-5.5`) and make `claude-haiku-5.5` adaptive-only on its Anthropic-native shim, whose budget-shaped thinking comes back 400
+- **Windows startup**: fix `npm run dev` / `npm run build` / `npm start` dying with “'C:\Program' is not recognized as an internal or external command” — all three wrappers now launch children through `scripts/spawn.mjs` as `node <next-cli>` with **no shell**, instead of handing an unquoted `C:\Program Files\nodejs\node.exe` (or `npx next`) to cmd.exe (DEP0190); Windows `.cmd`/`.bat` shims stay shelled but quoted, the Next CLI is resolved from `node_modules` so dev/build never depend on PATH, and importing `dev-server.mjs` can no longer boot a stray dev server
+- **Executors**: repair the broken `OllamaLocalExecutor` import in `open-sse/executors/index.js` (truncated mid-line, making the whole module unparseable) and register the missing upstream `InternWebExecutor` alongside it
 
 # v0.5.111 (2026-10-26)
 

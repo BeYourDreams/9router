@@ -15,11 +15,14 @@
 //   NINEROUTER_BUILD_JOBS      parallelism/worker cap (default: auto, see below)
 //   NINEROUTER_BUILD_MEM=0     lift everything (raw `next build` behaviour)
 //
+// `node <next-cli>` (scripts/spawn.mjs) instead of `npx next` for the same
+// reason every other child here is shell-free — see that file's header.
+//
 // Deliberately NOT used: experimental.webpackMemoryOptimizations /
 // webpackBuildWorker — this project builds with Turbopack, they don't apply.
 
-import { spawn } from "node:child_process";
 import { cpus, totalmem } from "node:os";
+import { runNext } from "./spawn.mjs";
 import { resolveDistDir, withoutSandbox } from "./dist-dir.mjs";
 import { copyStandaloneAssets } from "./copy-standalone-assets.mjs";
 
@@ -64,22 +67,15 @@ if (isMain) {
   }
 
   console.log(`[build] next build → ${env.NEXT_DIST_DIR}${passthrough.length ? " " + passthrough.join(" ") : ""}`);
-  const child = spawn("npx", ["next", "build", ...passthrough], {
-    stdio: "inherit",
-    shell: process.platform === "win32",
-    env,
-  });
+  // `node <next-cli> build`, not `npx next build`: no shell is involved, so a
+  // node.exe installed under "C:\Program Files\..." is never handed to cmd.exe
+  // unquoted (DEP0190 / "'C:\Program' is not recognized").
+  const code = await runNext(["build", ...passthrough], env);
+  if (code !== 0) process.exit(code);
 
-  for (const signal of ["SIGINT", "SIGTERM"]) {
-    process.on(signal, () => child.kill(signal));
-  }
-
-  child.on("exit", (code, signal) => {
-    if (code !== 0) process.exit(signal ? 1 : (code ?? 0));
-    // The asset copy lives here rather than in a `postbuild` hook: npm runs
-    // lifecycle scripts in its own env, which cannot carry `--sandbox`, so
-    // postbuild would copy into .next and leave the sandbox serving a page
-    // with no JS. The copy is idempotent (force), so re-running is cheap.
-    copyStandaloneAssets({ distDir: env.NEXT_DIST_DIR });
-  });
+  // The asset copy lives here rather than in a `postbuild` hook: npm runs
+  // lifecycle scripts in its own env, which cannot carry `--sandbox`, so
+  // postbuild would copy into .next and leave the sandbox serving a page
+  // with no JS. The copy is idempotent (force), so re-running is cheap.
+  copyStandaloneAssets({ distDir: env.NEXT_DIST_DIR });
 }

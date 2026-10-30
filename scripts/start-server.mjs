@@ -19,10 +19,14 @@
 // `<distDir>/standalone` is that server's own working directory and `next build`
 // deletes it (EBUSY on Windows, a crashed instance everywhere else). A stale
 // build behind a live port is therefore a refusal with the fix in its message.
+//
+// All child processes go through scripts/spawn.mjs, which deliberately avoids
+// `shell: true` — see the header comment there for the "'C:\Program' is not
+// recognized" / DEP0190 bug this prevents.
 
-import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { run } from "./spawn.mjs";
 import { resolvePort, withPortEnv, portFlagFromArgv } from "./server-port.mjs";
 import { resolveDistDir, wantsSandbox, assertNotProductionPort } from "./dist-dir.mjs";
 import { isBuildStale, portOccupied } from "./build-state.mjs";
@@ -46,26 +50,6 @@ const standaloneDir = resolve(buildDir, "standalone");
 const serverPath = resolve(standaloneDir, "custom-server.js");
 const copyScript = resolve(projectRoot, "scripts", "copy-standalone-assets.mjs");
 const port = assertNotProductionPort(resolvePort(), { sandbox: wantsSandbox(argv) });
-
-function run(command, args, env) {
-  return new Promise((done) => {
-    const child = spawn(command, args, {
-      stdio: "inherit",
-      shell: process.platform === "win32",
-      env,
-    });
-    const forward = (signal) => () => child.kill(signal);
-    const onInt = forward("SIGINT");
-    const onTerm = forward("SIGTERM");
-    process.on("SIGINT", onInt);
-    process.on("SIGTERM", onTerm);
-    child.on("exit", (code, signal) => {
-      process.off("SIGINT", onInt);
-      process.off("SIGTERM", onTerm);
-      done(signal ? 1 : (code ?? 0));
-    });
-  });
-}
 
 /** The standalone tree is only servable with assets + the wrapper present. */
 function assetsMissing() {
