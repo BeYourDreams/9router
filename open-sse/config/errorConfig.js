@@ -59,7 +59,16 @@ const COOLDOWN = {
 export const ERROR_RULES = [
   // --- Text-based rules (checked first, order = priority) ---
   { provider: "codex", text: "model is not supported when using codex with a chatgpt account", cooldownMs: MAX_RATE_LIMIT_COOLDOWN_MS },
-  // Intl gateway blocks affect the account/IP, so let the connection back off.
+  // CodeBuddy intl refuses a call it does not like with HTTP 400 code 11128
+  // "request illegal" (channel verification) or a 403 code 11140 (risk control).
+  // Both are account/IP-scoped rather than request-scoped, so the connection has
+  // to leave rotation — see #5024.
+  //
+  // 11140 goes first because text rules match in order and its payload also
+  // carries msg "request illegal". An account flagged for "unusual activity" is
+  // only cleared by an appeal from the official client, so the short exponential
+  // ladder would just cycle it back into rotation and re-news the flag.
+  { provider: "codebuddy-intl", text: "11140", cooldownMs: MAX_RATE_LIMIT_COOLDOWN_MS },
   { provider: "codebuddy-intl", text: "request illegal", backoff: true },
   { provider: "codebuddy-intl", text: "conversation id missing", backoff: true },
   { text: "no credentials",           cooldownMs: COOLDOWN.long },

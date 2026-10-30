@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BACKOFF_CONFIG } from "../../open-sse/config/errorConfig.js";
 import { checkFallbackError } from "../../open-sse/services/accountFallback.js";
-import { handleComboChat } from "../../open-sse/services/combo.js";
+import { handleComboChat, resetComboRotation, resetComboModelCooldowns } from "../../open-sse/services/combo.js";
 
 const db = vi.hoisted(() => ({
   getProviderConnections: vi.fn(),
@@ -22,6 +22,10 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-10-22T00:00:00.000Z"));
   vi.spyOn(console, "error").mockImplementation(() => {});
   db.getProviderConnections.mockResolvedValue([{ id: "cb-account", backoffLevel: 2 }]);
+  // Combo rotation/cooldown live in module state, so an it.each that reuses one
+  // comboName would otherwise start the second case from where the first left it.
+  resetComboRotation();
+  resetComboModelCooldowns();
 });
 afterEach(() => {
   vi.useRealTimers();
