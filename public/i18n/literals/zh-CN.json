@@ -1415,5 +1415,11 @@
   "Singapore": "新加坡",
   "Europe · Amsterdam": "欧洲 · 阿姆斯特丹",
   "Russia": "俄罗斯",
-  "India": "印度"
+  "India": "印度",
+  "Import free models": "导入免费模型",
+  "Bulk remove imported": "批量移除导入模型",
+  "Select all (imported models only)": "全选（仅可移除导入的模型）",
+  "Remove selected": "移除选中",
+  "Removing...": "移除中...",
+  "imported models": "个导入模型"
 }

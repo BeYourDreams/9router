@@ -4,7 +4,13 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
-function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
+import { translate } from "@/i18n/runtime";
+
+// ponytail: free tier is only marked in the id/name upstream (no pricing in /models),
+// so it is a suffix heuristic. Upgrade path: ask the /models route for a priced `isFree` flag.
+const FREE_ID_RE = /(^|[^a-z0-9])free([^a-z0-9]|$)/i;
+
+function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting, selectable, selected, onSelect }) {
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
     : testStatus === "error"
@@ -19,6 +25,15 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
 
   return (
     <div className={`flex items-center gap-3 p-3 rounded-lg border ${borderColor} hover:bg-sidebar/50`}>
+      {selectable && (
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onSelect}
+          aria-label={`Select ${modelId} for removal`}
+          className="h-4 w-4 accent-red-500"
+        />
+      )}
       <span
         className="material-symbols-outlined text-base text-text-muted"
         style={iconColor ? { color: iconColor } : undefined}
@@ -60,27 +75,33 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
           )}
         </div>
       </div>
-      <button
-        onClick={onDeleteAlias}
-        className="p-1 hover:bg-red-50 rounded text-red-500"
-        title="Remove model"
-      >
-        <span className="material-symbols-outlined text-sm">delete</span>
-      </button>
+      {!selectable && (
+        <button
+          onClick={onDeleteAlias}
+          className="p-1 hover:bg-red-50 rounded text-red-500"
+          title="Remove model"
+        >
+          <span className="material-symbols-outlined text-sm">delete</span>
+        </button>
+      )}
     </div>
   );
 }
 
-export default function CompatibleModelsSection({ providerStorageAlias, providerDisplayAlias, modelAliases, customModels, copied, onCopy, onDeleteAlias, onAddCustomModel, onDeleteCustomModel, connections, isAnthropic }) {
+export default function CompatibleModelsSection({ providerStorageAlias, providerDisplayAlias, modelAliases, customModels, copied, onCopy, onDeleteAlias, onAddCustomModels, onDeleteCustomModels, connections, isAnthropic }) {
   const [newModel, setNewModel] = useState("");
   const [adding, setAdding] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [testingModelId, setTestingModelId] = useState(null);
+  const [importing, setImporting] = useState(null); // null | "all" | "free"
+  // A Set, not a single id: several model pings run at once.
+  const [testingModelIds, setTestingModelIds] = useState(() => new Set());
   const [modelTestResults, setModelTestResults] = useState({});
+  const [bulkRemoving, setBulkRemoving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [removing, setRemoving] = useState(false);
 
   const handleTestModel = async (modelId) => {
-    if (testingModelId) return;
-    setTestingModelId(modelId);
+    if (testingModelIds.has(modelId)) return;
+    setTestingModelIds((prev) => new Set(prev).add(modelId));
     try {
       const res = await fetch("/api/models/test", {
         method: "POST",
@@ -92,7 +113,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
     } catch {
       setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
     } finally {
-      setTestingModelId(null);
+      setTestingModelIds((prev) => { const n = new Set(prev); n.delete(modelId); return n; });
     }
   };
 
@@ -102,6 +123,9 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
     providerAlias: providerStorageAlias,
     type: "llm",
   });
+
+  // Only imported models (source "custom") are bulk-removable; legacy aliases keep their single delete.
+  const removableIds = allModels.filter((m) => m.source === "custom").map((m) => m.id);
 
   const handleAdd = async () => {
     if (!newModel.trim() || adding) return;
@@ -113,7 +137,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
 
     setAdding(true);
     try {
-      await onAddCustomModel(modelId);
+      await onAddCustomModels([modelId]);
       setNewModel("");
     } catch (error) {
       console.log("Error adding model:", error);
@@ -122,43 +146,80 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
     }
   };
 
-  const handleImport = async () => {
-    if (importing) return;
+  const fetchLiveModels = async () => {
     const activeConnection = connections.find((conn) => conn.isActive !== false);
-    if (!activeConnection) return;
+    if (!activeConnection) return null;
 
-    setImporting(true);
+    const res = await fetch(`/api/providers/${activeConnection.id}/models`);
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || "Failed to fetch models");
+      return null;
+    }
+    return data.models || [];
+  };
+
+  const handleImport = async (freeOnly) => {
+    if (importing) return;
+    const models = await fetchLiveModels();
+    if (models === null) return;
+    if (models.length === 0) {
+      alert("No models returned from /models.");
+      return;
+    }
+
+    setImporting(freeOnly ? "free" : "all");
     try {
-      const res = await fetch(`/api/providers/${activeConnection.id}/models`);
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || "Failed to import models");
+      const known = new Set(allModels.map((entry) => entry.id));
+      const ids = [...new Set(models
+        .filter((model) => !freeOnly || FREE_ID_RE.test(model.id || model.model || "") || FREE_ID_RE.test(model.name || ""))
+        .map((model) => model.id || model.name || model.model)
+        .filter((modelId) => typeof modelId === "string" && modelId && !known.has(modelId)))];
+
+      if (ids.length === 0) {
+        alert(freeOnly ? "No new free models were found." : "No new models were added.");
         return;
       }
-      const models = data.models || [];
-      if (models.length === 0) {
-        alert("No models returned from /models.");
-        return;
-      }
-      let importedCount = 0;
-      for (const model of models) {
-        const modelId = model.id || model.name || model.model;
-        if (!modelId) continue;
-        if (allModels.some((entry) => entry.id === modelId)) continue;
-        await onAddCustomModel(modelId);
-        importedCount += 1;
-      }
-      if (importedCount === 0) {
-        alert("No new models were added.");
-      }
+      await onAddCustomModels(ids);
     } catch (error) {
       console.log("Error importing models:", error);
     } finally {
-      setImporting(false);
+      setImporting(null);
+    }
+  };
+
+  const toggleBulkMode = () => {
+    // Entering select mode preselects every imported model.
+    setSelectedIds(bulkRemoving ? new Set() : new Set(removableIds));
+    setBulkRemoving(!bulkRemoving);
+  };
+
+  const toggleSelected = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkRemove = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0 || removing) return;
+    if (!confirm(`${translate("Remove")} ${ids.length} ${translate("imported models")}?`)) return;
+    setRemoving(true);
+    try {
+      await onDeleteCustomModels(ids);
+      setBulkRemoving(false);
+      setSelectedIds(new Set());
+    } catch (error) {
+      console.log("Error removing models:", error);
+    } finally {
+      setRemoving(false);
     }
   };
 
   const canImport = connections.some((conn) => conn.isActive !== false);
+  const selectableCount = selectedIds.size;
 
   return (
     <div className="flex flex-col gap-4">
@@ -182,9 +243,17 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         <Button size="sm" icon="add" onClick={handleAdd} disabled={!newModel.trim() || adding}>
           {adding ? "Adding..." : "Add"}
         </Button>
-        <Button size="sm" variant="secondary" icon="download" onClick={handleImport} disabled={!canImport || importing}>
-          {importing ? "Importing..." : "Import from /models"}
+        <Button size="sm" variant="secondary" icon="download" onClick={() => handleImport(false)} disabled={!canImport || !!importing}>
+          {importing === "all" ? "Importing..." : "Import from /models"}
         </Button>
+        <Button size="sm" variant="secondary" icon="bolt" onClick={() => handleImport(true)} disabled={!canImport || !!importing}>
+          {importing === "free" ? "Importing..." : translate("Import free models")}
+        </Button>
+        {removableIds.length > 0 && !bulkRemoving && (
+          <Button size="sm" variant="ghost" icon="delete_group" onClick={toggleBulkMode}>
+            {translate("Bulk remove imported")}
+          </Button>
+        )}
       </div>
 
       {!canImport && (
@@ -195,6 +264,22 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
 
       {allModels.length > 0 && (
         <div className="flex flex-col gap-3">
+          {bulkRemoving && (
+            <div className="flex items-center gap-2 flex-wrap rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2">
+              <label className="flex items-center gap-2 text-xs text-text-main">
+                <input
+                  type="checkbox"
+                  checked={selectableCount === removableIds.length && removableIds.length > 0}
+                  onChange={() => setSelectedIds(selectableCount === removableIds.length ? new Set() : new Set(removableIds))}
+                />
+                {translate("Select all (imported models only)")}
+              </label>
+              <Button size="xs" variant="danger" icon="delete" onClick={handleBulkRemove} disabled={selectableCount === 0 || removing}>
+                {removing ? translate("Removing...") : `${translate("Remove selected")} (${selectableCount})`}
+              </Button>
+              <Button size="xs" variant="ghost" onClick={toggleBulkMode} disabled={removing}>{translate("Cancel")}</Button>
+            </div>
+          )}
           {allModels.map(({ id, alias, source }) => (
             <CompatibleModelRow
               key={`${source}-${providerStorageAlias}/${id}`}
@@ -202,10 +287,13 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
               fullModel={`${providerDisplayAlias}/${id}`}
               copied={copied}
               onCopy={onCopy}
-              onDeleteAlias={() => source === "custom" ? onDeleteCustomModel(id) : onDeleteAlias(alias)}
+              onDeleteAlias={() => source === "custom" ? onDeleteCustomModels([id]) : onDeleteAlias(alias)}
               onTest={connections.length > 0 ? () => handleTestModel(id) : undefined}
               testStatus={modelTestResults[id]}
-              isTesting={testingModelId === id}
+              isTesting={testingModelIds.has(id)}
+              selectable={bulkRemoving && source === "custom"}
+              selected={selectedIds.has(id)}
+              onSelect={() => toggleSelected(id)}
             />
           ))}
         </div>
@@ -222,8 +310,8 @@ CompatibleModelsSection.propTypes = {
   copied: PropTypes.string,
   onCopy: PropTypes.func.isRequired,
   onDeleteAlias: PropTypes.func.isRequired,
-  onAddCustomModel: PropTypes.func.isRequired,
-  onDeleteCustomModel: PropTypes.func.isRequired,
+  onAddCustomModels: PropTypes.func.isRequired,
+  onDeleteCustomModels: PropTypes.func.isRequired,
   connections: PropTypes.arrayOf(PropTypes.shape({
     id: PropTypes.string,
     isActive: PropTypes.bool,

@@ -36,17 +36,26 @@ export async function GET() {
   }
 }
 
-// POST /api/models/custom - Add custom model
+// POST /api/models/custom - Add custom model(s)
+// Body takes either a single { providerAlias, id, ... } or a bulk { providerAlias, type, ids: [...] }.
 export async function POST(request) {
   try {
-    const { providerAlias, id, type, name, caps, transport } = await request.json();
-    if (!providerAlias || !id) {
-      return NextResponse.json({ error: "providerAlias and id required" }, { status: 400 });
+    const body = await request.json();
+    const { providerAlias, name, caps, transport, type = "llm" } = body;
+    const ids = Array.isArray(body.ids) ? body.ids : [body.id];
+    if (!providerAlias || ids.length === 0 || ids.some((id) => !id || typeof id !== "string")) {
+      return NextResponse.json({ error: "providerAlias and id (or ids[]) required" }, { status: 400 });
     }
     const cleanCaps = sanitizeCaps(caps);
-    const cleanTransport = sanitizeTransport(transport, type || "llm");
-    const added = await addCustomModel({ providerAlias, id, type: type || "llm", name, ...(cleanCaps ? { caps: cleanCaps } : {}), ...(cleanTransport ? { transport: cleanTransport } : {}) });
-    return NextResponse.json({ success: true, added });
+    const cleanTransport = sanitizeTransport(transport, type);
+    let added = 0;
+    for (const id of [...new Set(ids)]) {
+      // `name` only makes sense for a single model; a bulk import keeps id-as-name.
+      const rowName = ids.length === 1 ? name : undefined;
+      const ok = await addCustomModel({ providerAlias, id, type, name: rowName, ...(cleanCaps ? { caps: cleanCaps } : {}), ...(cleanTransport ? { transport: cleanTransport } : {}) });
+      if (ok) added += 1;
+    }
+    return NextResponse.json({ success: true, added, count: ids.length });
   } catch (error) {
     console.log("Error adding custom model:", error);
     return NextResponse.json({ error: "Failed to add custom model" }, { status: 500 });
@@ -54,27 +63,40 @@ export async function POST(request) {
 }
 
 // DELETE /api/models/custom?providerAlias=xxx&id=yyy&type=zzz
+// Bulk: same URL, JSON body { ids: [...] }.
 export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url);
     const providerAlias = searchParams.get("providerAlias");
-    const id = searchParams.get("id");
     const type = searchParams.get("type") || "llm";
-    if (!providerAlias || !id) {
-      return NextResponse.json({ error: "providerAlias and id required" }, { status: 400 });
+    if (!providerAlias) {
+      return NextResponse.json({ error: "providerAlias and id (or ids[]) required" }, { status: 400 });
     }
-    await deleteCustomModel({ providerAlias, id, type });
-    // Sync: strip the removed provider-internal model from any combo that referenced it.
-    const removedModel = `${providerAlias}/${id}`;
+    let body = null;
+    try { body = await request.json(); } catch { /* no body — single delete via query */ }
+    const ids = Array.isArray(body?.ids) ? body.ids : [searchParams.get("id")];
+    if (ids.some((id) => !id || typeof id !== "string")) {
+      return NextResponse.json({ error: "providerAlias and id (or ids[]) required" }, { status: 400 });
+    }
+
+    const removedModels = [];
+    for (const id of [...new Set(ids)]) {
+      await deleteCustomModel({ providerAlias, id, type });
+      removedModels.push(`${providerAlias}/${id}`);
+    }
+
+    // Sync: strip the removed provider-internal models from any combo that referenced them.
+    // One pass over combos for the whole batch instead of one per model.
+    const removed = new Set(removedModels);
     const combos = await getCombos();
     for (const combo of combos) {
       const models = combo.models || [];
-      const next = models.filter((m) => m !== removedModel);
+      const next = models.filter((m) => !removed.has(m));
       if (next.length !== models.length) {
         await updateCombo(combo.id, { models: next });
       }
     }
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, removed: removedModels.length });
   } catch (error) {
     console.log("Error deleting custom model:", error);
     return NextResponse.json({ error: "Failed to delete custom model" }, { status: 500 });

@@ -566,37 +566,63 @@ export default function ProviderDetailPage() {
 
   // `transport` pins a realtime STT dispatch marker (shared whitelist
   // STT_TRANSPORT_META); the API only honours it on type "stt" records.
-  const handleAddCustomModel = async (modelId, type = "llm", providerAliasOverride = providerStorageAlias, caps, transport) => {
+  // One POST for the whole batch — an import of 200 models must not be 200 round trips.
+  const handleAddCustomModels = async (modelIds, type = "llm", providerAliasOverride = providerStorageAlias, caps, transport) => {
+    const ids = [...new Set((Array.isArray(modelIds) ? modelIds : [modelIds]).filter(Boolean))];
+    if (ids.length === 0) return false;
     try {
       const res = await fetch("/api/models/custom", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerAlias: providerAliasOverride, id: modelId, type, ...(caps ? { caps } : {}), ...(transport ? { transport } : {}) }),
+        body: JSON.stringify({
+          providerAlias: providerAliasOverride,
+          ...(ids.length === 1 ? { id: ids[0] } : { ids }),
+          type,
+          ...(caps ? { caps } : {}),
+          ...(transport ? { transport } : {}),
+        }),
       });
       if (res.ok) {
         await fetchCustomModels();
         if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("customModelChanged"));
-      } else {
-        const data = await res.json();
-        alert(data.error || "Failed to add custom model");
+        return true;
       }
+      const data = await res.json();
+      alert(data.error || "Failed to add custom model");
+      return false;
     } catch (error) {
       console.log("Error adding custom model:", error);
+      return false;
     }
   };
 
-  const handleDeleteCustomModel = async (modelId, type = "llm", providerAliasOverride = providerStorageAlias) => {
+  const handleAddCustomModel = (modelId, type = "llm", providerAliasOverride = providerStorageAlias, caps, transport) =>
+    handleAddCustomModels([modelId], type, providerAliasOverride, caps, transport);
+
+  const handleDeleteCustomModels = async (modelIds, type = "llm", providerAliasOverride = providerStorageAlias) => {
+    const ids = [...new Set((Array.isArray(modelIds) ? modelIds : [modelIds]).filter(Boolean))];
+    if (ids.length === 0) return false;
     try {
-      const params = new URLSearchParams({ providerAlias: providerAliasOverride, id: modelId, type });
-      const res = await fetch(`/api/models/custom?${params}`, { method: "DELETE" });
+      const params = new URLSearchParams({ providerAlias: providerAliasOverride, type });
+      const res = await fetch(`/api/models/custom?${params}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ids.length === 1 ? { id: ids[0] } : { ids }),
+      });
       if (res.ok) {
         await fetchCustomModels();
         if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("customModelChanged"));
+        return true;
       }
+      return false;
     } catch (error) {
       console.log("Error deleting custom model:", error);
+      return false;
     }
   };
+
+  const handleDeleteCustomModel = (modelId, type = "llm", providerAliasOverride = providerStorageAlias) =>
+    handleDeleteCustomModels([modelId], type, providerAliasOverride);
 
   // Fetch Qoder model list and automatically add to available models
   const handleImportQoderModels = async () => {
@@ -1178,8 +1204,8 @@ export default function ProviderDetailPage() {
           onCopy={copy}
           onSetAlias={handleSetAlias}
           onDeleteAlias={handleDeleteAlias}
-          onAddCustomModel={(modelId) => handleAddCustomModel(modelId, "llm", providerStorageAlias)}
-          onDeleteCustomModel={(modelId) => handleDeleteCustomModel(modelId, "llm", providerStorageAlias)}
+          onAddCustomModels={(ids) => handleAddCustomModels(ids, "llm", providerStorageAlias)}
+          onDeleteCustomModels={(ids) => handleDeleteCustomModels(ids, "llm", providerStorageAlias)}
           connections={connections}
           isAnthropic={isAnthropicCompatible}
         />
