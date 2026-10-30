@@ -20,10 +20,19 @@ export default {
     format: "openai",
     authType: "cookie",
   },
+  // Mirrors GET /api/orbit/v1/models (captured 2026-10). "Auto" is the router
+  // alias the UI exposes; upstream calls the same selection "Default".
   models: [
     { id: "Auto", name: "Auto" },
-    { id: "internlm2.5-20b", name: "InternLM2.5-20B" },
-    { id: "internlm2.5-7b", name: "InternLM2.5-7B" },
+    { id: "Default", name: "Default" },
+    { id: "书生-Agents-A1", name: "书生-Agents-A1" },
+    { id: "书生-A1.5", name: "书生-A1.5" },
+    { id: "书生-S2", name: "书生-S2" },
+    { id: "书生-Atria-Dawn-Preview", name: "书生-Atria-Dawn-Preview" },
+    { id: "Qwen3.7-Plus", name: "Qwen3.7-Plus" },
+    { id: "Qwen3.8-Flash", name: "Qwen3.8-Flash" },
+    { id: "DeepSeek-V4-Flash", name: "DeepSeek-V4-Flash" },
+    { id: "Kimi-K2.7-Code", name: "Kimi-K2.7-Code" },
   ],
   passthroughModels: true,
 };

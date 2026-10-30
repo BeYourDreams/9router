@@ -318,10 +318,11 @@ const PROBES = {
     try { json = JSON.parse(res.text); } catch { return UNKNOWN("Intern returned invalid JSON"); }
     if (Number(json?.code) !== 0 || !json?.data) return REJECTED("Intern rejected the uaa-token");
     const data = json.data;
-    const email = typeof data.sso_email === "string" ? data.sso_email : "";
     // Intern accounts are phone/GitHub logins, so sso_email is usually empty and
-    // the row would be named after the provider. Fall back to the visible handle.
-    const handle = typeof data.nickname === "string" ? data.nickname : "";
+    // the row would be named after the provider. Fall back to a visible handle.
+    const email = typeof data.sso_email === "string" ? data.sso_email : "";
+    const handle = [data.nickname, data.sso_github, data.sso_username]
+      .find((v) => typeof v === "string" && v.trim()) || "";
     return OK(email || (handle ? `${handle}@intern` : ""));
   },
 

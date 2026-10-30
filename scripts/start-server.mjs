@@ -27,8 +27,10 @@ const serverPath = resolve(standaloneDir, "custom-server.js");
 const copyScript = resolve(projectRoot, "scripts", "copy-standalone-assets.mjs");
 const port = resolvePort();
 
-// Set to skip the automatic build (CI, docker entrypoints, etc.).
-const noBuild = process.env.NINEROUTER_START_NO_BUILD === "1";
+// No automatic build here, by design: `next build` removes `.next/standalone`,
+// which is the live working directory of any server already running from it.
+// An auto-build on start therefore crashes the running instance (and on Windows
+// fails outright with EBUSY). Build explicitly with `npm run build` instead.
 
 function run(command, args, env) {
   return new Promise((done) => {
@@ -59,20 +61,12 @@ function assetsMissing() {
 }
 
 if (!existsSync(serverPath)) {
-  if (noBuild) {
-    console.error(
-      `\n[9router] No production build found.\n` +
-        `  Expected: ${serverPath}\n` +
-        `  Run \`npm run build\` first (NINEROUTER_START_NO_BUILD=1 blocks the auto-build).\n`
-    );
-    process.exit(1);
-  }
-  console.log(`[9router] No production build found — running \`npm run build\` first.`);
-  const buildCode = await run("npx", ["next", "build"], withPortEnv(port));
-  if (buildCode !== 0) {
-    console.error(`\n[9router] Build failed (exit ${buildCode}). Fix the errors above, then rerun \`npm start\`.`);
-    process.exit(buildCode);
-  }
+  console.error(
+    `\n[9router] No production build found.\n` +
+      `  Expected: ${serverPath}\n` +
+      `  Run \`npm run build\` first, then \`npm start\`.\n`
+  );
+  process.exit(1);
 }
 
 // Always ensure the copy ran. `next build` alone leaves static/ out of the
