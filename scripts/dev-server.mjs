@@ -5,26 +5,32 @@
 // npm script.
 
 import { spawn } from "node:child_process";
-import { resolvePort, withPortEnv } from "./server-port.mjs";
-import { resolveDistDir, withoutSandbox } from "./dist-dir.mjs";
+import { resolvePort, withPortEnv, portFlagFromArgv } from "./server-port.mjs";
+import { resolveDistDir, assertNotProductionPort, withoutSandbox } from "./dist-dir.mjs";
 
 // --sandbox gives dev its own compile cache, so it never shares (or wipes) the
 // directory a running production server executes from.
-const argv = withoutSandbox(process.argv.slice(2));
-const port = resolvePort();
-const useWebpack = argv.includes("--webpack");
+const argv = process.argv.slice(2);
+const fromFlag = portFlagFromArgv(argv);
+if (fromFlag) process.env.PORT = String(fromFlag);
+// next dev rejects unknown flags, so --sandbox is consumed by this wrapper only.
+const nextArgs = withoutSandbox(argv);
+// resolvePort() reads env/.env only; without the translation above, a dev server
+// silently binds the production port and shadows the live instance.
+const port = assertNotProductionPort(resolvePort(), { sandbox: argv.includes("--sandbox") });
+const useWebpack = nextArgs.includes("--webpack");
 
 const args = ["next", "dev"];
 if (useWebpack) args.push("--webpack");
 args.push("--port", String(port));
 
-console.log(`[dev] starting Next dev server on http://localhost:${port} (${resolveDistDir(process.argv.slice(2)).distDir})`);
+console.log(`[dev] starting Next dev server on http://localhost:${port} (${resolveDistDir(argv).distDir})`);
 
 const child = spawn("npx", args, {
   stdio: "inherit",
   shell: process.platform === "win32",
   // The env the child needs is the one distDir was resolved from.
-  env: withPortEnv(port, resolveDistDir(process.argv.slice(2)).env),
+  env: withPortEnv(port, resolveDistDir(argv).env),
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

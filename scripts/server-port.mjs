@@ -33,6 +33,18 @@ export function resolvePort(projectRoot = process.cwd()) {
   return DEFAULT_PORT;
 }
 
+/**
+ * Wrapper-only `--port N`. resolvePort() reads env and .env only, so a port passed
+ * to a wrapper must be translated here or the wrapper silently uses the default —
+ * which is the PRODUCTION port.
+ */
+export function portFlagFromArgv(argv = process.argv.slice(2)) {
+  const i = argv.indexOf("--port");
+  if (i === -1) return null;
+  const n = Number.parseInt(argv[i + 1], 10);
+  return Number.isInteger(n) && n > 0 && n < 65536 ? n : null;
+}
+
 /** Spawn a child process with PORT exported so the child sees the same value. */
 export function withPortEnv(port, extra = {}) {
   return { ...process.env, ...extra, PORT: String(port) };

@@ -15,6 +15,7 @@
 //   node scripts/start-server.mjs --sandbox --port 20127
 
 import { resolve } from "node:path";
+import { DEFAULT_PORT as DEFAULT_PRODUCTION_PORT } from "./server-port.mjs";
 
 export const SANDBOX_DIST_DIR = ".next-sandbox";
 const DEFAULT_DIST_DIR = ".next";
@@ -40,4 +41,20 @@ export function withoutSandbox(argv = process.argv.slice(2)) {
 
 export function distDirRoot(projectRoot = process.cwd(), argv = process.argv.slice(2)) {
   return resolve(projectRoot, resolveDistDir(argv).distDir);
+}
+
+/**
+ * A sandbox run must never bind the production port: the instance there holds
+ * long-running tasks and the whole point of --sandbox is to leave it alone.
+ * Returns the port to use, or exits rather than taking 20128 over.
+ */
+export function assertNotProductionPort(port, { sandbox = wantsSandbox() } = {}) {
+  if (sandbox && Number(port) === DEFAULT_PRODUCTION_PORT) {
+    console.error(
+      `[sandbox] refusing to serve on port ${port} — that is the production instance.\n` +
+      `          Pass an explicit port, e.g. -- --sandbox --port 20127`,
+    );
+    process.exit(1);   // a CLI guard, not a library: exiting is the caller's only option
+  }
+  return port;
 }

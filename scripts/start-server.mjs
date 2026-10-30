@@ -17,8 +17,8 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { resolvePort, withPortEnv } from "./server-port.mjs";
-import { resolveDistDir } from "./dist-dir.mjs";
+import { resolvePort, withPortEnv, portFlagFromArgv } from "./server-port.mjs";
+import { resolveDistDir, wantsSandbox, assertNotProductionPort } from "./dist-dir.mjs";
 
 const argv = process.argv.slice(2);
 
@@ -26,11 +26,11 @@ const argv = process.argv.slice(2);
 // directory. Must be resolved before anything reads NEXT_DIST_DIR below.
 process.env.NEXT_DIST_DIR = resolveDistDir(argv).distDir;
 
-// `--port N` is a wrapper-only flag: resolvePort() reads env/.env, not argv, so
-// translate it here. Without this `--sandbox --port 20127` silently serves the
-// sandbox build ON 20128, i.e. it hijacks the production port.
-const portFlag = argv.indexOf("--port");
-if (portFlag !== -1 && argv[portFlag + 1]) process.env.PORT = argv[portFlag + 1];
+// `--port N` is a wrapper-only flag: resolvePort() reads env/.env (and this repo's
+// .env pins PORT=20128), so without translating it here a sandbox run serves on
+// the production port and shadows the live instance.
+const fromFlag = portFlagFromArgv(argv);
+if (fromFlag) process.env.PORT = String(fromFlag);
 
 const projectRoot = process.cwd();
 const distDir = process.env.NEXT_DIST_DIR;
@@ -38,7 +38,7 @@ const buildDir = resolve(projectRoot, distDir);
 const standaloneDir = resolve(buildDir, "standalone");
 const serverPath = resolve(standaloneDir, "custom-server.js");
 const copyScript = resolve(projectRoot, "scripts", "copy-standalone-assets.mjs");
-const port = resolvePort();
+const port = assertNotProductionPort(resolvePort(), { sandbox: wantsSandbox(argv) });
 
 // No automatic build here, by design: `next build` removes `.next/standalone`,
 // which is the live working directory of any server already running from it.

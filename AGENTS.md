@@ -6,10 +6,13 @@
    directory instead — every wrapper understands `--sandbox`:
 
    ```bash
-   npm run build -- --sandbox                    # → .next-sandbox, never touches .next
-   npm run dev -- --sandbox                      # dev server with its own compile cache
+   npm run build -- --sandbox                             # → .next-sandbox, .next untouched
+   npm run dev -- --sandbox --port 20127                  # dev with its own compile cache
    node scripts/start-server.mjs --sandbox --port 20127   # serve the sandbox build
    ```
+
+   `--port` is required with `--sandbox`: port resolution reads `PORT`/`.env` and both
+   wrappers exit rather than let a sandbox run bind the production port (20128).
 
    Confirm the log says `Ready` on `http://localhost:20127` before probing it. Never
    `taskkill` a process on 20128 and never delete `.next`.
