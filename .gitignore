@@ -106,3 +106,7 @@ debug.log
 # Local build/probe artifacts and browser captures (may contain cookies)
 .next-verify/
 intern-capture/
+
+# Persistent sandbox build dir (npm run build -- --sandbox) — keeps its own
+# Turbopack cache so verification builds stay warm without touching .next
+/.next-sandbox/

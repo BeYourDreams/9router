@@ -6,6 +6,9 @@
 // instance resident, that is the OOM kill or a pegged machine. `next build` has
 // no flag for it, so it is set through the env Node and Rayon read.
 //
+// `npm run build -- --sandbox` builds into .next-sandbox instead of .next, which
+// is the running production server's own working directory. See scripts/dist-dir.mjs.
+//
 // Every number is env-overridable — these are defaults, not a ceiling you can
 // only raise by editing this file:
 //   NINEROUTER_BUILD_HEAP_MB   per-process V8 heap cap (default: auto, see below)
@@ -17,6 +20,8 @@
 
 import { spawn } from "node:child_process";
 import { cpus, totalmem } from "node:os";
+import { resolveDistDir, withoutSandbox } from "./dist-dir.mjs";
+import { copyStandaloneAssets } from "./copy-standalone-assets.mjs";
 
 const HEAP_CAP_MB = 8192; // more only delays the OOM, it doesn't prevent it
 const HEAP_FLOOR_MB = 2048; // below this the build thrashes instead of finishing
@@ -41,9 +46,11 @@ export function buildLimits(env = process.env, memoryBytes = totalmem(), coreCou
 const isMain = process.argv[1]?.replace(/\\/g, "/").endsWith("scripts/build-server.mjs");
 
 if (isMain) {
+  const argv = process.argv.slice(2);
   const limits = buildLimits();
-  const passthrough = process.argv.slice(2); // e.g. `npm run build -- --webpack`
-  const env = { ...process.env, NEXT_TELEMETRY_DISABLED: "1" };
+  // `--sandbox` sets NEXT_DIST_DIR; anything else after `--` goes to the CLI.
+  const { env } = resolveDistDir(argv, { ...process.env, NEXT_TELEMETRY_DISABLED: "1" });
+  const passthrough = withoutSandbox(argv); // e.g. `npm run build -- --webpack --sandbox`
 
   if (limits) {
     env.NODE_OPTIONS = `${process.env.NODE_OPTIONS || ""} --max-old-space-size=${limits.heapMb}`.trim();
@@ -56,7 +63,7 @@ if (isMain) {
     console.log(`[build] capped: heap ${limits.heapMb}MB, ${limits.jobs} jobs (NINEROUTER_BUILD_MEM=0 lifts this)`);
   }
 
-  console.log(`[build] next build${passthrough.length ? " " + passthrough.join(" ") : ""}`);
+  console.log(`[build] next build → ${env.NEXT_DIST_DIR}${passthrough.length ? " " + passthrough.join(" ") : ""}`);
   const child = spawn("npx", ["next", "build", ...passthrough], {
     stdio: "inherit",
     shell: process.platform === "win32",
@@ -66,5 +73,13 @@ if (isMain) {
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, () => child.kill(signal));
   }
-  child.on("exit", (code, signal) => process.exit(signal ? 1 : (code ?? 0)));
+
+  child.on("exit", (code, signal) => {
+    if (code !== 0) process.exit(signal ? 1 : (code ?? 0));
+    // The asset copy lives here rather than in a `postbuild` hook: npm runs
+    // lifecycle scripts in its own env, which cannot carry `--sandbox`, so
+    // postbuild would copy into .next and leave the sandbox serving a page
+    // with no JS. The copy is idempotent (force), so re-running is cheap.
+    copyStandaloneAssets({ distDir: env.NEXT_DIST_DIR });
+  });
 }

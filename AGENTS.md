@@ -1,45 +1,52 @@
 ## Development / verification workflow (required)
 
-1. **Test changes on port 20127, never 20128.**
-   A long-lived production instance (`npm run start`) occupies **20128**. Start your dev server on 20127 so you never fight it for the port:
+1. **Never stop or build over the instance on 20128. Use `--sandbox`.**
+   A long-lived production instance occupies **20128** and `.next/standalone` is its own
+   working directory (`next build` does `rmdir` on it). Verify everything in a separate
+   directory instead — every wrapper understands `--sandbox`:
 
    ```bash
-   PORT=20127 npx next dev
+   npm run build -- --sandbox                    # → .next-sandbox, never touches .next
+   npm run dev -- --sandbox                      # dev server with its own compile cache
+   node scripts/start-server.mjs --sandbox --port 20127   # serve the sandbox build
    ```
 
-   Whichever command you use, confirm the log actually says `Ready` on `http://localhost:20127` before you probe it. If a previous dev server is still holding the port, free it (or pick another) rather than assuming yours came up.
+   Confirm the log says `Ready` on `http://localhost:20127` before probing it. Never
+   `taskkill` a process on 20128 and never delete `.next`.
+
+   Keep `.next-sandbox` — do not delete it. Turbopack's build cache lives in
+   `<distDir>/cache/turbopack`, so a warm sandbox build compiles in ~24s vs ~41s cold.
+   (A plain `.next` build is only for an actual release, and only when nothing is
+   running on 20128.)
 
 2. **Verify before you report done.** A green unit test file is not verification — exercise the changed path against the running 20127 server (`curl` the API, or log in at `http://localhost:20127/dashboard`) and show the real result.
 
-3. **`npm run build` then `npm run start` must both succeed before the work is finished.** `start` serves the built `.next/standalone` output and exits with an error if the build is missing or incomplete, so it is the only check that proves the change actually ships. Do not skip it because dev worked — dev compiles nothing.
+3. **`npm run build -- --sandbox` must succeed before the work is finished** (plus
+   `node scripts/start-server.mjs --sandbox --port 20127` when the change touches the
+   server itself). Do not skip it because dev worked — dev compiles nothing.
 
-   To run the built output on a non-default port afterwards:
-   `PORT=20127 npm run start` (Windows cmd: `set PORT=20127 && npm run start`).
+### ⚠️ Why the sandbox directory exists
 
-### ⚠️ Never build while an instance is running
-
-`next build` does `rmdir .next/standalone`, and **both** the production server *and* `next dev` execute the code inside that directory — there is no copy, so this is their own working directory, not a stale artifact. Building underneath a live instance therefore makes it **crash / flash-exit** mid-run, and on Windows the build *itself* fails first with:
+Building into `.next` while a server runs from it either crashes that instance mid-task
+or fails the build outright on Windows:
 
    ```text
    EBUSY: resource busy or locked, rmdir 'D:\...\.next\standalone'
    ```
 
-So before any `npm run build`:
-
-   ```bash
-   netstat -ano | grep LISTENING | grep -E "20127|20128"   # note the PID(s)
-   taskkill //PID <pid> //F                                # repeat per PID
-   ```
-
-This is deliberately a manual, explicit step: only stop instances **you** started, and leave someone else's running gateway alone. If you must not stop it, do **not** run `npm run build` — report that the build check is blocked and needs the instance stopped, instead of clearing build output by hand (deleting `.next` under a live server has exactly the same effect as `rmdir` did).
-
-Do not delete or otherwise prune build output to "make room" for a build: `.next/standalone` is live working code for whatever is currently serving traffic.
+`--sandbox` sets `NEXT_DIST_DIR=.next-sandbox` for build, dev and start alike
+(`scripts/dist-dir.mjs`), so the two trees never collide. `npm run build -- --sandbox`
+also runs the standalone asset copy itself, because npm lifecycle hooks (`postbuild`
+was removed for this reason) cannot carry the flag into their own env.
 
 ## ⚠️ npm start build requirement
 
-- `npm start` runs `node scripts/start-server.mjs` which **requires** a prior `npm run build`
-- The script will exit with error if `.next/standalone/custom-server.js` is missing or assets are incomplete
-- Always run `npm run build` (or `npm run dev`) before `npm start` after code changes
+- `npm start` runs `node scripts/start-server.mjs` which **requires** a prior `npm run build` (no auto-build any more)
+- The script exits with an error if `<distDir>/standalone/custom-server.js` is missing or assets are incomplete
+- Always `npm run build` (or `npm run build -- --sandbox`) before serving after code changes
+- `npm run build` is capped: heap ≈40% of RAM (2–8GB). `NINEROUTER_BUILD_HEAP_MB` /
+  `NINEROUTER_BUILD_JOBS` / `NINEROUTER_BUILD_MEM=0` tune it. CPU is left uncapped on
+  purpose — halving workers cost 74% more wall time and OOM, not CPU, is the failure mode.
 
 
 <!-- BEGIN:nextjs-agent-rules -->

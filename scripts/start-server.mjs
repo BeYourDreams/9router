@@ -18,9 +18,22 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { resolvePort, withPortEnv } from "./server-port.mjs";
+import { resolveDistDir } from "./dist-dir.mjs";
+
+const argv = process.argv.slice(2);
+
+// `--sandbox` serves .next-sandbox, leaving the production instance on its own
+// directory. Must be resolved before anything reads NEXT_DIST_DIR below.
+process.env.NEXT_DIST_DIR = resolveDistDir(argv).distDir;
+
+// `--port N` is a wrapper-only flag: resolvePort() reads env/.env, not argv, so
+// translate it here. Without this `--sandbox --port 20127` silently serves the
+// sandbox build ON 20128, i.e. it hijacks the production port.
+const portFlag = argv.indexOf("--port");
+if (portFlag !== -1 && argv[portFlag + 1]) process.env.PORT = argv[portFlag + 1];
 
 const projectRoot = process.cwd();
-const distDir = process.env.NEXT_DIST_DIR || ".next";
+const distDir = process.env.NEXT_DIST_DIR;
 const buildDir = resolve(projectRoot, distDir);
 const standaloneDir = resolve(buildDir, "standalone");
 const serverPath = resolve(standaloneDir, "custom-server.js");
