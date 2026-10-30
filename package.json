@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node scripts/dev-server.mjs",
     "dev:webpack": "node scripts/dev-server.mjs --webpack",
-    "build": "next build",
+    "build": "node scripts/build-server.mjs",
     "postbuild": "node scripts/copy-standalone-assets.mjs",
     "postbuild:bun": "node scripts/copy-standalone-assets.mjs",
     "start": "node scripts/start-server.mjs",
