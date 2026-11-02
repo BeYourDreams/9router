@@ -43,11 +43,19 @@ export function hasValuableContent(chunk, format) {
   // OpenAI format
   if (format === FORMATS.OPENAI && chunk.choices?.[0]?.delta) {
     const delta = chunk.choices[0].delta;
-    return delta.content && delta.content !== "" ||
-           delta.reasoning_content && delta.reasoning_content !== "" ||
-           delta.tool_calls && delta.tool_calls.length > 0 ||
-           chunk.choices[0].finish_reason ||
-           delta.role;
+    // A terminal chunk is valuable as soon as it carries a finish reason. Some
+    // OpenAI-compatible gateways (DeepSeek-style, e.g. Sage-A1.5 / 书生-A1.5)
+    // place `finish_reason` on the delta instead of on choices[0]: dropping it
+    // means the client never receives the content nor the usage trailer (incl.
+    // cached_tokens / cache hits), so every turn looks like a cold cache miss.
+    return !!(
+      (delta.content && delta.content !== "") ||
+      (delta.reasoning_content && delta.reasoning_content !== "") ||
+      (delta.tool_calls && delta.tool_calls.length > 0) ||
+      chunk.choices[0].finish_reason ||
+      delta.finish_reason ||
+      delta.role
+    );
   }
 
   // Claude format

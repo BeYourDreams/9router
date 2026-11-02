@@ -100,6 +100,17 @@ export const WEB_LOGIN_CONFIGS = {
       { type: "cookie", namePattern: /^(deviceId|passToken|serviceToken|userId|cUserId|.+_ph)$/ },
     ],
   },
+  "doubao-web": {
+    loginUrl: "https://www.doubao.com/chat/",
+    cookieDomain: ".doubao.com",
+    // The web uplink authenticates with the account cookie header ( Passport
+    // sessionid + sid_tt), not a single bearer token — so the credential stays
+    // the full cookie header (default credentialFrom).
+    tokenSources: [
+      { type: "cookie", name: "sessionid" },
+      { type: "cookie", name: "sid_tt", optional: true },
+    ],
+  },
   "intern-web": {
     loginUrl: "https://discovery.intern-ai.org.cn/chat",
     cookieDomain: ".intern-ai.org.cn",
@@ -108,6 +119,16 @@ export const WEB_LOGIN_CONFIGS = {
     tokenSources: [{ type: "cookie", name: "uaa-token" }],
     credentialFrom: "cookieValue",
     cookieValueName: "uaa-token",
+  },
+  "xinghuo-web": {
+    loginUrl: "https://xinghuo.xfyun.cn/desk",
+    cookieDomain: ".xfyun.cn",
+    // SESSION + ssoSessionId are the login pair the site mints on sign-in; the
+    // rest of the jar (analytics) rides along but never gates the capture.
+    tokenSources: [
+      { type: "cookie", name: "SESSION" },
+      { type: "cookie", name: "ssoSessionId", optional: true },
+    ],
   },
 };
 

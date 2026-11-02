@@ -9,6 +9,7 @@
 import { WEB_THROTTLE_ENABLED, WEB_THROTTLE_CONFIG } from "../config/runtimeConfig.js";
 import REGISTRY from "../providers/registry/index.js";
 import { webThrottleKey, withWebThrottle } from "./webRequestThrottle.js";
+import { maybeOpenVerifyWindow } from "./webAutoVerify.js";
 
 const WEB_COOKIE_PROVIDERS = new Set(
   REGISTRY.filter((e) => e.category === "webCookie").map((e) => e.id),
@@ -35,14 +36,24 @@ export function shouldThrottleWebProvider(provider) {
  */
 export async function throttledExecute(executor, args) {
   const { provider, credentials, connectionId, log } = args;
-  if (!shouldThrottleWebProvider(provider)) return executor.execute(args);
+  // Captcha / dead session → pop the Login-via-Browser window, unprompted, for
+  // EVERY webCookie provider. Fire-and-forget: never delays the error the
+  // client is waiting on. maybeOpenVerifyWindow no-ops instantly for providers
+  // with no login config or statuses that are not ours.
+  const offerVerify = (result) => {
+    if (result?.response) maybeOpenVerifyWindow({ provider, connectionId, credentials, response: result.response, log });
+    return result;
+  };
+  if (!shouldThrottleWebProvider(provider)) return offerVerify(await executor.execute(args));
 
   const key = webThrottleKey({ connectionId, provider, credentials });
   try {
-    return await withWebThrottle(
-      key,
-      () => executor.execute(args),
-      { log, tag: "THROTTLE", statusOf: (r) => r?.response?.status },
+    return offerVerify(
+      await withWebThrottle(
+        key,
+        () => executor.execute(args),
+        { log, tag: "THROTTLE", statusOf: (r) => r?.response?.status },
+      ),
     );
   } catch (err) {
     if (err?.code === "WEB_THROTTLE_TIMEOUT") {

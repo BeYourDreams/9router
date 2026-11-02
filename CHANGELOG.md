@@ -7,6 +7,7 @@
 - **Codex**: add `gpt-6.1-terra` (responses-lite lane, GPT-6-Lite thinking levels)
 
 ## Fixes
+- **Sage-A1.5 (书生-A1.5)**: forward the streaming terminal frame — its `finish_reason` lands on `choices[0].delta` (DeepSeek-style) instead of `choices[0]`, so the OpenAI-formatter's valuable-content check rejected it and clients received an empty turn plus nothing of the usage trailer (cached_tokens / cache hits)
 - **NVIDIA NIM**: normalize assistant `reasoning` aliases to `reasoning_content` before forwarding, avoiding NIM's duplicate-field 400 when clients send both.
 - **Lazy Runtime**: make the on-demand wreq-js/playwright-core installer work inside published builds — fetch `createRequire` at runtime instead of the bundler-stubbed static import, mark the runtime-dir `import()` calls `webpackIgnore` so file URLs are not captured as bundle chunks, anchor npm to the runtime dir with a minimal `package.json`, and wipe + reinstall once when npm exits 0 on a partially-extracted package (#5245)
 - **Docker**: bake `wreq-js` and `playwright-core` into the runner image's `node_modules` (builder-stage isolated install) so OpenCode Free resolves without runtime downloads (#5245)

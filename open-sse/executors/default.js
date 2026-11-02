@@ -118,6 +118,14 @@ export class DefaultExecutor extends BaseExecutor {
         delete transformed.client_metadata;
       }
       stripUnsupportedParams(this.provider, model, transformed);
+      // Upstream chat endpoints only send the usage trailer (with it, and with
+      // prompt_tokens_details.cached_tokens) when stream_options.include_usage
+      // is true. Without it 9router falls back to token estimation: the reported
+      // token counts get inflated and cached_tokens stays 0 on every turn, so a
+      // cache hit looks like a miss for the whole model. Ask for it up front.
+      if (stream === true && this.provider?.startsWith?.("openai-compatible-") && !transformed?.stream_options?.include_usage) {
+        transformed.stream_options = { ...transformed?.stream_options, include_usage: true };
+      }
     }
 
     return injectReasoningContent({ provider: this.provider, model, body: transformed });

@@ -23,6 +23,8 @@ import { VeoAiFreeWebExecutor } from "./veoaifree-web.js";
 import { UcWebExecutor } from "./uc-web.js";
 import { ChatGptWebExecutor } from "./chatgpt-web.js";
 import { ChatGLMWebExecutor } from "./chatglm-web.js";
+import { DoubaoWebExecutor } from "./doubao-web.js";
+import { XinghuoWebExecutor } from "./xinghuo-web.js";
 import { XiaomiMiMoWebExecutor } from "./xiaomimimo-web.js";
 import { QwenWebExecutor } from "./qwen-web.js";
 import { InternWebExecutor } from "./intern-web.js";
@@ -71,6 +73,8 @@ const executors = {
   "uc-web": new UcWebExecutor(),
   "chatgpt-web": new ChatGptWebExecutor(),
   "chatglm-web": new ChatGLMWebExecutor(),
+  "doubao-web": new DoubaoWebExecutor(),
+  "xinghuo-web": new XinghuoWebExecutor(),
 "xiaomimimo-web": new XiaomiMiMoWebExecutor(),
   "qwen-web": new QwenWebExecutor(),
   // Without a registered executor getExecutor() falls through to DefaultExecutor,
@@ -138,6 +142,8 @@ export { GeminiWebExecutor } from "./gemini-web.js";
 export { MuseWebExecutor } from "./muse-web.js";
 export { ChatGptWebExecutor } from "./chatgpt-web.js";
 export { ChatGLMWebExecutor } from "./chatglm-web.js";
+export { DoubaoWebExecutor } from "./doubao-web.js";
+export { XinghuoWebExecutor } from "./xinghuo-web.js";
 export { XiaomiMiMoWebExecutor } from "./xiaomimimo-web.js";
 export { InternWebExecutor } from "./intern-web.js";
 export { OllamaLocalExecutor } from "./ollama-local.js";

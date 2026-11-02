@@ -265,7 +265,9 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     } catch (err) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       console.error(`[ChatCore] Failed to parse JSON from ${provider}:`, err.message);
-      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+      // Content type is the whole diagnosis: text/html means the endpoint returned a
+      // page (wrong/unimplemented endpoint), not an API error body.
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider} (content-type: ${contentType || "none"})`);
     }
   }
 

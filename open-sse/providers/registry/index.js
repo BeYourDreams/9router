@@ -152,6 +152,7 @@ import p155 from "./nace.js";
 import p156 from "./qwen-web.js";
 import p157 from "./intern-web.js";
 import p158 from "./doubao-web.js";
+import p159 from "./xinghuo-web.js";
 export default [
   p0,
   p1,
@@ -304,4 +305,5 @@ p153,
   p156,
   p157,
   p158,
+  p159,
 ];

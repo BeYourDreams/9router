@@ -4,20 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Modal } from "@/shared/components";
 import { translate } from "@/i18n/runtime";
+import { listWebLoginProviders } from "open-sse/services/webLoginConfig.js";
 
-// Client mirror of open-sse/services/webLoginConfig.js keys — the server list
-// stays authoritative (POST rejects anything not configured there).
-export const WEB_LOGIN_PROVIDERS = new Set([
-  "grok-web",
-  "chatgpt-web",
-  "gemini-web",
-  "muse-web",
-  "uc-web",
-  "chatglm-web",
-  "xiaomimimo-web",
-  "qwen-web",
-  "intern-web",
-]);
+// webLoginConfig.js is a pure static module, so the button list is derived from
+// it instead of being hand-copied. ponytail: bundles the token-pattern configs
+// into this chunk; upgrade path if it ever matters is an API-provided list.
+export const WEB_LOGIN_PROVIDERS = new Set(listWebLoginProviders());
 
 const PROFILE_ICON_BY_NAME = {
   default: "person",

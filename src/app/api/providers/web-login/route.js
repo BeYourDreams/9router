@@ -63,6 +63,9 @@ export async function GET(request) {
       session.accountEmail = email;
       const providerSpecificData = {
         authMethod: "web-login",
+        // Which browser profile this cookie came from — the auto-verify window has to
+        // re-solve the captcha in that same profile, not in "default".
+        webLoginProfile: session.profile || "default",
         ...(config?.credentialFrom === "localStorageValue" ? { tokenSource: "localStorage" } : {}),
       };
 
