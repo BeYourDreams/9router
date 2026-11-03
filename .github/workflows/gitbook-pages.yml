@@ -2,7 +2,7 @@ name: Deploy GitBook to 9router.github.io
 
 on:
   push:
-    branches: [main, master]
+    branches: [master]
     paths:
       - "gitbook/**"
       - ".github/workflows/gitbook-pages.yml"
