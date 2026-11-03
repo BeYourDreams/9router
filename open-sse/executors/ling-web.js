@@ -37,7 +37,10 @@ export async function executeLingWeb({ input, fetchImpl }) {
   });
   const convJson = await convRes.json().catch(() => ({}));
   const convId = convJson?.data?.id ?? convJson?.id ?? convJson?.conversationId;
-  if (!convId) throw Object.assign(new Error(`Ling Web could not open a conversation: ${JSON.stringify(convJson).slice(0,160)}`), { status: 502 });
+  if (!convId) {
+    const notLogin = convJson?.errorCode === "USER_NOT_LOGIN" || convJson?.success === false;
+    throw Object.assign(new Error(`Ling Web could not open a conversation: ${JSON.stringify(convJson).slice(0,160)}`), { status: notLogin ? 401 : 502 });
+  }
 
   const headers = { "Content-Type": "application/json", "x-webgw-protocol": "chunked", Accept: "text/event-stream", Cookie: cookie, Origin: BASE, Referer: `${BASE}/chat`, "User-Agent": UA, "Accept-Language": "zh-CN" };
   const payload = { input: text, conversationId: convId, model: MODEL, config: {}, files: [] };
