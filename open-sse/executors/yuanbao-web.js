@@ -69,7 +69,7 @@ export async function executeYuanbaoWeb({ input, fetchImpl }) {
   const convId = convJson?.id;
   if (!convId) throw Object.assign(new Error(`Yuanbao Web could not open a conversation: ${JSON.stringify(convJson).slice(0,160)}`), { status: 502 });
 
-  const headers = { ...CAPTURED_HEADERS, Cookie: cookie, "content-type": "text/plain;charset=UTF-8", accept: "text/event-stream", referer: `${BASE}/chat/${AGENT_ID}`, "user-agent": UA };
+  const headers = { ...CAPTURED_HEADERS, Cookie: cookie, "content-type": "text/plain;charset=UTF-8", accept: "text/event-stream", referer: `${BASE}/chat/${AGENT_ID}/${convId}`, "user-agent": UA, "x-agentid": `${AGENT_ID}/${convId}`, "x-timestamp": String(Date.now()) };
   const payload = { model: bodyObj?.model || "gpt_175B_0404", prompt: text, displayPrompt: text, displayPromptType: 1, agentId: AGENT_ID, isTemporary: false, projectId: "", chatModelId: bodyObj?.model === "hunyuan" ? "hunyuan_gpt_175B_0404" : "hunyuan_gpt_175B_0404", supportFunctions: ["openAutoSearchSwitch", "autoInternetSearch"], multimedia: [], supportHint: 1, chatModelExtInfo: JSON.stringify({ modelId: "hunyuan_gpt_175B_0404", agentModeModelSetting: { modelId: "hunyuan_gpt_175B_0404" }, supportFunctions: { internetSearch: "" }, internetSearch: "autoInternetSearch" }), applicationIdList: [], version: "v2", extReportParams: null, isAtomInput: false, conversationId: convId, offsetOfHour: 8, offsetOfMinute: 0 };
 
   const res = await fetchImpl(`${BASE}/api/chat/${convId}`, { method: "POST", headers, body: JSON.stringify(payload), ...(signal ? { signal } : {}) });
