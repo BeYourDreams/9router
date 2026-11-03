@@ -74,7 +74,7 @@ export async function DELETE(request) {
     }
     let body = null;
     try { body = await request.json(); } catch { /* no body — single delete via query */ }
-    const ids = Array.isArray(body?.ids) ? body.ids : [searchParams.get("id")];
+    const ids = Array.isArray(body?.ids) ? body.ids : [body?.id || searchParams.get("id")];
     if (ids.some((id) => !id || typeof id !== "string")) {
       return NextResponse.json({ error: "providerAlias and id (or ids[]) required" }, { status: 400 });
     }
