@@ -137,7 +137,7 @@ export const WEB_LOGIN_CONFIGS = {
     ],
   },
   "ling-web": {
-    loginUrl: "https://chat.ant-ling.com/chat",
+    loginUrl: "https://ling.tbox.cn/chat",
     cookieDomain: ".ant-ling.com",
     tokenSources: [{ type: "cookie", name: "ling_visitor" }],
   },
