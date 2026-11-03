@@ -38,7 +38,7 @@ export async function executeLingWeb({ input, fetchImpl }) {
   const convJson = await convRes.json().catch(() => ({}));
   const convId = convJson?.data?.id ?? convJson?.id ?? convJson?.conversationId;
   if (!convId) {
-    const notLogin = convJson?.errorCode === "USER_NOT_LOGIN" || convJson?.success === false;
+    const notLogin = convJson?.errorCode === "USER_NOT_LOGIN" || convJson?.success === false || convRes.status === 401 || convRes.status === 403;
     throw Object.assign(new Error(`Ling Web could not open a conversation: ${JSON.stringify(convJson).slice(0,160)}`), { status: notLogin ? 401 : 502 });
   }
 
