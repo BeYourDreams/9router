@@ -114,3 +114,12 @@ doubao-capture/
 # Generic capture tool output: node tools/web-capture.mjs <url> --out <host>-capture
 *-capture/
 tools/.capture-profiles/
+
+# Ad-hoc scratch used while probing providers (build/dev logs, one-off fixtures).
+# Nothing here is read by the app; tmp/test-delete.mjs and friends are throwaway.
+/tmp/
+/.tmp/
+
+# `> D:sb-sandbox.log` typed at a Windows cmd prompt writes a literal "D:<FS>" name
+# into the repo root (cmd resolves `D:file` against the current dir on D:).
+*sb-sandbox.log
