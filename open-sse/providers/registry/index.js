@@ -153,6 +153,9 @@ import p156 from "./qwen-web.js";
 import p157 from "./intern-web.js";
 import p158 from "./doubao-web.js";
 import p159 from "./xinghuo-web.js";
+import p160 from "./yuanbao-web.js";
+import p161 from "./yiyan-web.js";
+import p162 from "./ling-web.js";
 export default [
   p0,
   p1,
@@ -306,4 +309,7 @@ p153,
   p157,
   p158,
   p159,
+  p160,
+  p161,
+  p162,
 ];
