@@ -120,6 +120,27 @@ export const WEB_LOGIN_CONFIGS = {
     credentialFrom: "cookieValue",
     cookieValueName: "uaa-token",
   },
+  "yuanbao-web": {
+    loginUrl: "https://yuanbao.tencent.com/chat",
+    cookieDomain: ".tencent.com",
+    tokenSources: [
+      { type: "cookie", name: "hy_token" },
+      { type: "cookie", name: "hy_user", optional: true },
+    ],
+  },
+  "yiyan-web": {
+    loginUrl: "https://yiyan.baidu.com",
+    cookieDomain: ".baidu.com",
+    tokenSources: [
+      { type: "cookie", name: "BAIDUID" },
+      { type: "cookie", name: "BDUSS", optional: true },
+    ],
+  },
+  "ling-web": {
+    loginUrl: "https://chat.ant-ling.com/chat",
+    cookieDomain: ".ant-ling.com",
+    tokenSources: [{ type: "cookie", name: "ling_visitor" }],
+  },
   "xinghuo-web": {
     loginUrl: "https://xinghuo.xfyun.cn/desk",
     cookieDomain: ".xfyun.cn",

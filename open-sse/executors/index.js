@@ -25,6 +25,9 @@ import { ChatGptWebExecutor } from "./chatgpt-web.js";
 import { ChatGLMWebExecutor } from "./chatglm-web.js";
 import { DoubaoWebExecutor } from "./doubao-web.js";
 import { XinghuoWebExecutor } from "./xinghuo-web.js";
+import { YuanbaoWebExecutor } from "./yuanbao-web.js";
+import { YiyanWebExecutor } from "./yiyan-web.js";
+import { LingWebExecutor } from "./ling-web.js";
 import { XiaomiMiMoWebExecutor } from "./xiaomimimo-web.js";
 import { QwenWebExecutor } from "./qwen-web.js";
 import { InternWebExecutor } from "./intern-web.js";
@@ -75,6 +78,9 @@ const executors = {
   "chatglm-web": new ChatGLMWebExecutor(),
   "doubao-web": new DoubaoWebExecutor(),
   "xinghuo-web": new XinghuoWebExecutor(),
+  "yuanbao-web": new YuanbaoWebExecutor(),
+  "yiyan-web": new YiyanWebExecutor(),
+  "ling-web": new LingWebExecutor(),
 "xiaomimimo-web": new XiaomiMiMoWebExecutor(),
   "qwen-web": new QwenWebExecutor(),
   // Without a registered executor getExecutor() falls through to DefaultExecutor,
@@ -144,6 +150,9 @@ export { ChatGptWebExecutor } from "./chatgpt-web.js";
 export { ChatGLMWebExecutor } from "./chatglm-web.js";
 export { DoubaoWebExecutor } from "./doubao-web.js";
 export { XinghuoWebExecutor } from "./xinghuo-web.js";
+export { YuanbaoWebExecutor } from "./yuanbao-web.js";
+export { YiyanWebExecutor } from "./yiyan-web.js";
+export { LingWebExecutor } from "./ling-web.js";
 export { XiaomiMiMoWebExecutor } from "./xiaomimimo-web.js";
 export { InternWebExecutor } from "./intern-web.js";
 export { OllamaLocalExecutor } from "./ollama-local.js";
