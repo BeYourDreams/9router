@@ -123,3 +123,6 @@ tools/.capture-profiles/
 # `> D:sb-sandbox.log` typed at a Windows cmd prompt writes a literal "D:<FS>" name
 # into the repo root (cmd resolves `D:file` against the current dir on D:).
 *sb-sandbox.log
+
+# Scratch captures from web-provider login debugging.
+/ling-capture-auto/
