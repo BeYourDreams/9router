@@ -9,9 +9,13 @@ import { buildTtsProviderModels } from "../config/ttsModels.js";
 const OAUTH_INJECT_FIELDS = ["clientId", "clientSecret", "tokenUrl"];
 
 // transport: re-apply shared default (format:"openai") + inject oauth-canonical fields
-function buildTransport(transport, oauth) {
+function buildTransport(transport, oauth, category) {
   const t = { ...transport };
   if (!t.format) t.format = PROVIDER_DEFAULTS.format;
+  // `category` lives on the registry entry, not on transport; surface it here so
+  // callers holding only PROVIDERS[id] (e.g. the web tool bridge) can tell a
+  // webCookie cookie-login provider from a normal API-key one.
+  if (category && t.category === undefined) t.category = category;
   if (oauth) {
     for (const f of OAUTH_INJECT_FIELDS) {
       if (t[f] === undefined && oauth[f] !== undefined) t[f] = oauth[f];
@@ -33,7 +37,7 @@ export const PROVIDER_OAUTH = {};
 export const PROVIDER_MEDIA = {};
 for (const entry of REGISTRY) {
   if (entry.transport) {
-    PROVIDERS[entry.id] = buildTransport(entry.transport, entry.oauth);
+    PROVIDERS[entry.id] = buildTransport(entry.transport, entry.oauth, entry.category);
     if (entry.transports) PROVIDERS[entry.id].transports = entry.transports;
   }
   if (entry.models !== undefined) PROVIDER_MODELS[entry.alias || entry.id] = entry.models.map(normalizeModel);

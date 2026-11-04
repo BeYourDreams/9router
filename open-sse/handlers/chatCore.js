@@ -34,6 +34,9 @@ import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { defaultClaudeToolType, shouldDefaultClaudeToolType } from "../translator/concerns/toolCall.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
+import { prepareToolMessages } from "../translator/webTools.js";
+import { usesWebToolBridge, requestHasTools } from "../utils/webToolPolicy.js";
+import { wrapResponseWithWebToolBridge } from "../utils/webToolBridge.js";
 
 /**
  * Core chat handler - shared between SSE and Worker
@@ -335,6 +338,25 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // system/tools/messages, and a stale anchor costs a full prefix rewrite.
   if (passthrough && clientTool === "claude") anchorClaudeCache(translatedBody);
 
+  // Web-cookie providers without native function calling (xinghuo-web, chatglm-web,
+  // doubao-web, yiyan-web, yuanbao-web, ling-web, …) receive the tool contract as
+  // prompt text; the response side then parses the model's <tool> reply back into
+  // `tool_calls` so agent clients execute it instead of stopping on plain prose.
+  // Executors with their own tool plumbing (grok/gemini/chatgpt/deepseek) opt out.
+  let webToolBridge = null;
+  if (usesWebToolBridge(provider) && requestHasTools(translatedBody)) {
+    const requestedTools = translatedBody.tools || translatedBody.functions;
+    const prepared = prepareToolMessages(translatedBody, translatedBody.messages || []);
+    if (prepared.hasTools) {
+      translatedBody = { ...translatedBody, messages: prepared.effectiveMessages };
+      // The upstream webUI has no tools channel: drop the now-redundant field so
+      // it is not mistaken for a native capability by the executor.
+      delete translatedBody.tools;
+      webToolBridge = { requestedTools, idSeed: provider };
+      if (log?.debug) log.debug("WEBTOOLS", `${provider} | ${requestedTools.length} tool(s) bridged into the prompt`);
+    }
+  }
+
   const executor = getExecutor(provider);
   trackPendingRequest(model, provider, connectionId, true);
   appendRequestLog({ model, provider, connectionId, status: "PENDING" }).catch(() => { });
@@ -529,20 +551,20 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // non-stream OpenAI/native client behind a Responses upstream must also take
   // this path — handleForcedSSEToJson returns null when the body is not SSE.
   if (!clientRequestedStreaming && (providerRequiresStreaming || providerResponseFormat === FORMATS.OPENAI_RESPONSES)) {
-    const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, customToolNames, toolNameMap, trackDone, appendLog });
+    const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, customToolNames, toolNameMap, trackDone, appendLog, webToolBridge });
     if (result) { streamController.handleComplete(); return result; }
   }
 
   // True non-streaming response
   if (!stream) {
-    const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, reqLogger, toolNameMap, customToolNames, trackDone, appendLog });
+    const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, reqLogger, toolNameMap, customToolNames, trackDone, appendLog, webToolBridge });
     streamController.handleComplete();
     return result;
   }
 
   // Streaming response
   const { onStreamComplete, streamDetailId } = buildOnStreamComplete({ ...sharedCtx });
-  return handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, userAgent, reqLogger, toolNameMap, customToolNames, streamController, onStreamComplete, streamDetailId, credentials });
+  return handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, userAgent, reqLogger, toolNameMap, customToolNames, streamController, onStreamComplete, streamDetailId, credentials, webToolBridge });
 }
 
 export function isTokenExpiringSoon(expiresAt, bufferMs = 5 * 60 * 1000) {
