@@ -482,10 +482,10 @@ export function toNumericSessionId(sessionId) {
 // Cleanup expired assistant-session entries
 const assistantCleanup = setInterval(() => {
     const now = Date.now();
-    for (const [key, entry] of assistantSessionStore) {
+    for (const [key, entry] of assistantSessionStore.entries()) {
         if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) assistantSessionStore.delete(key);
     }
-    for (const [key, entry] of continuationStore) {
+    for (const [key, entry] of continuationStore.entries()) {
         if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) continuationStore.delete(key);
     }
 }, MEMORY_CONFIG.sessionCleanupIntervalMs);
