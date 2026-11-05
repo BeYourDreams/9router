@@ -4,24 +4,9 @@ import { PROVIDERS } from "../config/providers.js";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { getThinkingLevels } from "../providers/thinkingLevels.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
-import { resolveSessionId, resolveSessionIdentity } from "../utils/sessionManager.js";
+import { resolveSessionId } from "../utils/sessionManager.js";
 import { isMuseSparkModel } from "../providers/models/helpers.js";
-import { applyFingerprintTools, applyFingerprintSystemPrompt } from "../utils/opencodeFingerprint.js";
-import { opencodeTlsFetch } from "../services/opencodeTlsClient.js";
-import { fetchViaTransport } from "../utils/opencodeTransport.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import {
-  resolveEgress,
-  markEgressCooling,
-  getEgressCooldown,
-  hasActiveDirectCooldown,
-  selectAlternateProxy,
-  parseRetryAfterMs,
-  syntheticRateLimitResponse,
-  describeEgress,
-  DIRECT_EGRESS_ID,
-  alternateToProxyOptions,
-} from "../utils/egress.js";
+import { applyFingerprintTools } from "../utils/opencodeFingerprint.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import {
   normalizeResponsesInput,
@@ -30,26 +15,24 @@ import {
   coerceResponsesOutput,
 } from "../translator/formats/responsesApi.js";
 
-// OpenCode v2 UA shape: opencode/<channel>/<version>/<client>. Upstream rejects
-// the v1 "opencode/1.18.x" form with 403 FreeTierError since 2026-10-14.
-const OPENCODE_UA = "opencode/latest/2.2.5/cli";
-const OPENCODE_CLIENT = "cli";
+const OPENCODE_UA = "opencode/1.18.31";
 const MAX_SESSION_LENGTH = 256;
 const MAX_TOOL_NAME_LEN = 128;
 const SESSION_HEADER = "x-opencode-session";
 const SESSION_FIELD = "_opencodeSession";
+const REQ_FIELD = "_opencodeRequest";
 export const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
+export const OPENCODE_REQUEST_RE = /^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 const BASE62_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-// chatCore falls back to `crypto.randomUUID() + Date.now()` for providerSessionId
-// when the downstream request carries no session hint. Treating that synthetic
-// seed as a real conversation hint gives every request its own upstream session.
-const SYNTHETIC_SESSION_SEED_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\d{13}$/i;
 
 function hasValidOpencodeVersion(ua) {
-  const m = String(ua || "").match(/^opencode\/[a-z0-9-]+\/(\d+)\.\d+\.\d+\/[a-z0-9-]+$/i);
-  return !!m && parseInt(m[1], 10) >= 2;
+  const m = String(ua || "").match(/opencode\/(\d+)\.(\d+)(?:\.(\d+))?/i);
+  if (!m) return false;
+  const major = parseInt(m[1], 10);
+  const minor = parseInt(m[2], 10);
+  return major > 1 || (major === 1 && minor >= 17);
 }
-// Models served by /inference/v1/responses; every other model stays on /chat/completions.
+// Models served by /zen/v1/responses; every other model stays on /chat/completions.
 const RESPONSES_MODELS = new Set([
   "muse-spark-1.2-contributor-free",
   "muse-spark-1.3-contributor-free",
@@ -68,44 +51,51 @@ function unstableRandom() {
   return randomPart;
 }
 
-// Session prefix = 12 hex of ~(timeMs * 0x1000 + counter), low 48 bits, like the CLI.
-// Upstream decodes it and rejects a non-small counter with 403 FreeTierError
-// (live probes: counter 0–16 pass, >=100 fail), so the counter must stay real.
-const SESSION_PREFIX_MASK = (1n << 48n) - 1n;
-const SESSION_COUNTER_MAX = 16;
-
-function descendingTimeHex(time, counterValue) {
-  return (~(BigInt(time) * 0x1000n + BigInt(counterValue)) & SESSION_PREFIX_MASK)
-    .toString(16)
-    .padStart(12, "0");
-}
-
 export function generateSessionId(timestamp = Date.now()) {
   if (timestamp !== lastTimestamp) {
     lastTimestamp = timestamp;
     counter = 0;
   }
-  counter = (counter % SESSION_COUNTER_MAX) + 1;
-  return `ses_${descendingTimeHex(timestamp, counter)}${unstableRandom()}`;
+  counter++;
+
+  const current = BigInt(timestamp) * 0x1000n + BigInt(counter);
+  const value = ~current;
+  const time = Array.from({ length: 6 }, (_, index) =>
+    Number((value >> BigInt(40 - 8 * index)) & 0xffn)
+      .toString(16)
+      .padStart(2, "0")
+  ).join("");
+  return `ses_${time}${unstableRandom()}`;
 }
 
-// Upstream decodes the session prefix as a timestamp and rejects ids whose clock
-// is far from the request with a 429 FreeUsageLimitError. Mint translated ids from
-// the current clock, then cache per hint + rotation epoch so a conversation keeps
-// one session across turns instead of getting a fresh one every request.
-//
-// Prefix invariance: the id — and therefore its 12-hex prefix — must not change
-// mid-conversation. A new id is a new upstream prompt cache, so any churn here
-// shows up as a cache miss on every turn. Egress (IP/proxy) is deliberately NOT
-// part of the key; a 429 rotates the session via the epoch instead.
+export function generateRequestId(timestamp = Date.now()) {
+  const current = BigInt(timestamp) * 0x1000n + 1n;
+  const value = current;
+  const time = Array.from({ length: 6 }, (_, index) =>
+    Number((value >> BigInt(40 - 8 * index)) & 0xffn)
+      .toString(16)
+      .padStart(2, "0")
+  ).join("");
+  return `msg_${time}${unstableRandom()}`;
+}
+
 const translatedOpencodeSessions = new Map();
 const MAX_TRANSLATED_SESSIONS = 1000;
+const translatedSessionCleanup = setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of translatedOpencodeSessions) {
+    if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) {
+      translatedOpencodeSessions.delete(key);
+    }
+  }
+}, MEMORY_CONFIG.sessionCleanupIntervalMs);
+if (translatedSessionCleanup.unref) translatedSessionCleanup.unref();
 
-export function translateSessionId(sessionId, clientTool = "", epoch = 0) {
+export function translateSessionId(sessionId, clientTool = "") {
   if (typeof sessionId === "string" && OPENCODE_SESSION_RE.test(sessionId.trim())) {
     return sessionId.trim();
   }
-  const key = `${clientTool || "generic"}\0${epoch}\0${sessionId || ""}`;
+  const key = `opencode:ses:${clientTool || "generic"}:${sessionId || ""}`;
   const existing = translatedOpencodeSessions.get(key);
   if (existing) {
     existing.lastUsed = Date.now();
@@ -113,12 +103,12 @@ export function translateSessionId(sessionId, clientTool = "", epoch = 0) {
     translatedOpencodeSessions.set(key, existing);
     return existing.sessionId;
   }
-  const translated = generateSessionId();
+  const id = generateSessionId();
   if (translatedOpencodeSessions.size >= MAX_TRANSLATED_SESSIONS) {
     translatedOpencodeSessions.delete(translatedOpencodeSessions.keys().next().value);
   }
-  translatedOpencodeSessions.set(key, { sessionId: translated, lastUsed: Date.now() });
-  return translated;
+  translatedOpencodeSessions.set(key, { sessionId: id, lastUsed: Date.now() });
+  return id;
 }
 
 function normalizeSession(value) {
@@ -146,23 +136,12 @@ function nativeSession(headers) {
 // that: one stable canonical session per downstream identity, evicted
 // after MEMORY_CONFIG.sessionTtlMs like the other session stores.
 const stableOpencodeSessions = new Map();
-const opencodeSessionEpochs = new Map();
 const MAX_STABLE_SESSIONS = 1000;
 const stableSessionCleanup = setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of stableOpencodeSessions) {
     if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) {
       stableOpencodeSessions.delete(key);
-    }
-  }
-  for (const [key, entry] of opencodeSessionEpochs) {
-    if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) {
-      opencodeSessionEpochs.delete(key);
-    }
-  }
-  for (const [key, entry] of translatedOpencodeSessions) {
-    if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) {
-      translatedOpencodeSessions.delete(key);
     }
   }
 }, MEMORY_CONFIG.sessionCleanupIntervalMs);
@@ -178,22 +157,6 @@ function identityKey(credentials) {
     return `opencode:auth:${digest}`;
   }
   return "opencode:default";
-}
-
-function sessionEpoch(credentials) {
-  return opencodeSessionEpochs.get(identityKey(credentials))?.epoch || 0;
-}
-
-function rotateSession(credentials) {
-  if (nativeSession(credentials?.rawHeaders)) return false;
-  const key = identityKey(credentials);
-  const current = opencodeSessionEpochs.get(key);
-  if (opencodeSessionEpochs.size >= MAX_STABLE_SESSIONS && !current) {
-    opencodeSessionEpochs.delete(opencodeSessionEpochs.keys().next().value);
-  }
-  opencodeSessionEpochs.set(key, { epoch: (current?.epoch || 0) + 1, lastUsed: Date.now() });
-  stableOpencodeSessions.delete(key);
-  return true;
 }
 
 export function stableSessionId(credentials) {
@@ -213,7 +176,62 @@ export function stableSessionId(credentials) {
   return sessionId;
 }
 
-function bodyHasExplicitHint(body) {
+function lastUserText(body) {
+  try {
+    if (!body || typeof body !== "object") return "";
+    const arr = Array.isArray(body.messages)
+      ? body.messages
+      : Array.isArray(body.input)
+        ? body.input
+        : null;
+    if (!arr) return typeof body.input === "string" ? body.input.slice(-600) : "";
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const msg = arr[i];
+      if (!msg) continue;
+      if (msg.role && msg.role !== "user") continue;
+      const content = msg.content;
+      if (typeof content === "string" && content.trim()) return content.trim().slice(-600);
+      if (Array.isArray(content)) {
+        const text = content
+          .map((part) => (typeof part === "string" ? part : part?.text || part?.input_text || ""))
+          .join(" ")
+          .trim();
+        if (text) return text.slice(-600);
+      }
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
+// The real CLI sends the current user message id (stable per turn, same on
+// retries) as x-opencode-request. Derive it deterministically from the
+// session plus the last user message so retries share the id.
+export function deriveRequestId(sessionId, body) {
+  const text = lastUserText(body);
+  if (!text) return generateRequestId();
+  const digest = crypto
+    .createHash("sha256")
+    .update(`opencode-req\0${sessionId || ""}\0${text}`)
+    .digest();
+  const timeHex = digest.subarray(0, 6).toString("hex");
+  let randomPart = "";
+  for (let i = 6; i < 20; i++) {
+    randomPart += BASE62_CHARS[digest[i] % 62];
+  }
+  const id = `msg_${timeHex}${randomPart}`;
+  return OPENCODE_REQUEST_RE.test(id) ? id : generateRequestId();
+}
+
+function normalizeRequestId(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!normalized || normalized.length > MAX_SESSION_LENGTH) return null;
+  return OPENCODE_REQUEST_RE.test(normalized) ? normalized : null;
+}
+
+function bodyHasSessionHints(body) {
   try {
     if (!body || typeof body !== "object") return false;
     if (typeof body.session_id === "string" && body.session_id.trim()) return true;
@@ -221,33 +239,22 @@ function bodyHasExplicitHint(body) {
     if (typeof body.prompt_cache_key === "string" && body.prompt_cache_key.trim()) return true;
     if (body.metadata && typeof body.metadata.user_id === "string" && body.metadata.user_id.trim()) return true;
     if (body.request && body.request.sessionId != null && String(body.request.sessionId) !== "") return true;
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-// A body with real assistant output is a continuation of an existing
-// conversation; a body with only user turns starts a new one. Assistant output
-// of ANY shape counts — agent tool loops carry tool_use/tool_calls blocks and no
-// text, and judging on text alone re-minted the session on every turn (cache miss
-// per turn).
-function hasAssistantTurns(body) {
-  try {
-    const arr = Array.isArray(body?.messages)
+    const arr = Array.isArray(body.messages)
       ? body.messages
-      : Array.isArray(body?.input)
+      : Array.isArray(body.input)
         ? body.input
         : null;
-    if (!arr) return false;
-    for (const msg of arr) {
-      if (msg?.role !== "assistant") continue;
-      if (Array.isArray(msg.tool_calls) && msg.tool_calls.length) return true;
-      const content = msg.content;
-      if (typeof content === "string") {
-        if (content.trim()) return true;
-      } else if (Array.isArray(content) && content.length) {
-        return true;
+    if (arr) {
+      let assistantText = "";
+      for (const msg of arr) {
+        if (msg?.role === "assistant") {
+          const content = msg.content;
+          if (typeof content === "string") assistantText += content;
+          else if (Array.isArray(content)) {
+            for (const part of content) assistantText += part?.text || part?.output || "";
+          }
+          if (assistantText.length >= 50) return true;
+        }
       }
     }
     return false;
@@ -283,52 +290,37 @@ function resolveOpencodeSession(body, credentials, providerSessionId, clientTool
     }
   }
 
-  const seed = typeof providerSessionId === "string" && SYNTHETIC_SESSION_SEED_RE.test(providerSessionId.trim())
-    ? null
-    : providerSessionId;
-  const hinted = incoming || normalizeSession(seed);
-  if (hinted) return translateSessionId(hinted, clientTool, sessionEpoch(credentials));
+  const hinted = incoming || normalizeSession(providerSessionId);
+  if (hinted) return translateSessionId(hinted, clientTool);
 
-  // For no-auth free tier, the shared "noauth" connectionId would give every
-  // conversation the same upstream session (burns quota → 429). Only use the
-  // session manager when the client provides an explicit session hint.
-  const isNoAuth = credentials?.id === "noauth" || credentials?.accessToken === "public";
-  const explicitHint = bodyHasExplicitHint(body);
-  const hasClientHint = explicitHint || hasAssistantTurns(body);
-
-  if (!isNoAuth || explicitHint) {
-    if (credentials?.connectionId || hasClientHint) {
-      let viaManager = null;
-      try {
-        const identity = resolveSessionIdentity({
-          headers,
-          body,
-          connectionId: credentials?.connectionId,
-          scope: "opencode",
-        });
-        // If the session manager falls back to a per-connection session (ephemeral),
-        // and we're on no-auth, treat it as no-hint so we mint a fresh session.
-        if (isNoAuth && identity.ephemeral) {
-          viaManager = null;
-        } else {
-          viaManager = identity.sessionId;
-        }
-      } catch {
-        viaManager = null;
-      }
-      if (viaManager) return translateSessionId(viaManager, clientTool, sessionEpoch(credentials));
+  if (credentials?.connectionId || bodyHasSessionHints(body)) {
+    let viaManager = null;
+    try {
+      viaManager = resolveSessionId({
+        headers,
+        body,
+        connectionId: credentials?.connectionId,
+        scope: "opencode",
+      });
+    } catch {
+      viaManager = null;
     }
+    if (viaManager) return translateSessionId(viaManager, clientTool);
   }
 
-  // No conversation hint means this is a new request, not a continuation.
-  // Upstream free quota is accounted per session, and the no-auth connection is
-  // shared by every downstream client, so one canonical session burns out fast
-  // and then 429s until the process restarts. Mint a fresh session per fresh
-  // conversation and keep it only while assistant turns show it is still in
-  // flight. Drop the cached entry instead of bumping the epoch so hinted
-  // conversations on the same scope keep their session.
-  if (!hasAssistantTurns(body)) stableOpencodeSessions.delete(identityKey(credentials));
   return stableSessionId(credentials);
+}
+
+function resolveOpencodeRequestId(body, credentials, sessionId) {
+  const raw = credentials?.rawHeaders || {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (key.toLowerCase() === "x-opencode-request") {
+      const normalized = normalizeRequestId(value);
+      if (normalized) return normalized;
+      break;
+    }
+  }
+  return deriveRequestId(sessionId, body);
 }
 
 function normalizeResponsesTools(body) {
@@ -417,36 +409,6 @@ function normalizeOpencodeReasoning(model, body) {
   delete body.reasoning_effort;
 }
 
-// Chat Completions lane: the free backend validates reasoning_effort against the
-// plain OpenAI enum (none|minimal|low|medium|high|xhigh|max) and answers 400
-// "Invalid option" for anything else — including "auto", which adaptive thinking
-// (Claude Code's thinking:{type:"adaptive"}) arrives as. Omitting the field lets
-// the upstream pick its own default, which is what adaptive means; same rationale
-// as the Responses path above, which rejects "unknown variant `auto`".
-function dropAdaptiveReasoningEffort(body) {
-  if (body?.reasoning_effort === "auto") delete body.reasoning_effort;
-}
-
-function cloneRequestBody(body) {
-  if (body === null || typeof body !== "object") return body;
-  if (typeof structuredClone === "function") {
-    try { return structuredClone(body); } catch { }
-  }
-  try {
-    return JSON.parse(JSON.stringify(body));
-  } catch {
-    return body;
-  }
-}
-
-async function readResponseText(response) {
-  try {
-    return await response.clone().text();
-  } catch {
-    return "";
-  }
-}
-
 export class OpenCodeExecutor extends BaseExecutor {
   constructor() {
     super("opencode", PROVIDERS.opencode);
@@ -459,6 +421,7 @@ export class OpenCodeExecutor extends BaseExecutor {
     return {
       ...sourceCredentials,
       [SESSION_FIELD]: session,
+      [REQ_FIELD]: resolveOpencodeRequestId(body, sourceCredentials, session),
     };
   }
 
@@ -496,128 +459,20 @@ export class OpenCodeExecutor extends BaseExecutor {
       // non-empty tool arrays; skipping cloaking here triggers 403 FreeTierError.
       applyFingerprintTools(body, true);
     } else if (body && typeof body === "object") {
-      dropAdaptiveReasoningEffort(body);
-      applyFingerprintTools(body, false, { claude: isMessagesModel(model || body?.model) });
+      applyFingerprintTools(body, false);
     }
-    applyFingerprintSystemPrompt(body);
     return injectReasoningContent({ provider: this.provider, model, body });
   }
 
-  // The free gate keys on the TLS ClientHello, so a native Node fetch is refused
-  // no matter how faithful the body is. Route through the impersonating client
-  // and keep proxy handling on the existing path (proxyAwareFetch delegates to
-  // `directFetch` when no proxy is configured). Fail-open: without wreq-js the
-  // request still goes out on native fetch instead of erroring here.
   async execute(args) {
-    const { model, stream, credentials, log } = args;
-    const baseProxyOptions = args.proxyOptions || null;
-
-    let targetUrl;
-    try {
-      targetUrl = this.buildUrl(model, stream, 0, credentials);
-    } catch {
-      targetUrl = this.config.baseUrl;
-    }
-
-    // Candidate egress chain: configured proxy -> direct -> alternates pool
-    const candidates = [];
-    if (baseProxyOptions?.connectionProxyEnabled && baseProxyOptions?.connectionProxyUrl) {
-      candidates.push(baseProxyOptions); // 1. user-configured proxy
-    }
-    candidates.push(null); // 2. direct
-    for (const alternate of baseProxyOptions?.connectionProxyAlternates ?? []) {
-      candidates.push(alternateToProxyOptions(baseProxyOptions, alternate)); // 3. shared pool
-    }
-
-    // Dedupe by resolved egress id, skip cooled, attempt sequentially
-    const seen = new Set();
-    let retryBody = cloneRequestBody(args.body);
-    let lastPrepared = null;
-    let lastResult = null;
-    let lastRotated = false;
-
-    for (const proxyOptions of candidates) {
-      let egress;
-      try {
-        egress = await resolveEgress({
-          targetUrl,
-          proxyOptions,
-          forceProbe: hasActiveDirectCooldown(),
-        });
-      } catch (error) {
-        log?.debug?.("EGRESS", `resolve failed, failing open: ${error.message}`);
-        egress = {
-          id: DIRECT_EGRESS_ID,
-          kind: "direct",
-          confirmed: false,
-          ip: null,
-          proxyUrl: null,
-          relayUrl: null,
-        };
-      }
-
-      if (seen.has(egress.id)) continue;
-      seen.add(egress.id);
-
-      const cooldown = getEgressCooldown(egress);
-      if (cooldown && egress.confirmed) {
-        log?.debug?.("EGRESS", `${describeEgress(egress)} cooling ${Math.ceil(cooldown.retryAfterMs / 1000)}s, trying next candidate`);
-        continue;
-      }
-
-      const prepared = this.prepareRequestCredentials({ ...args, body: retryBody });
-      lastPrepared = prepared;
-
-      const result = await super.execute({ ...args, credentials: prepared, proxyOptions });
-      lastResult = result;
-
-      if (!result?.response || result.response.status !== 429) return result;
-
-      const bodyText = await readResponseText(result.response);
-      const retryAfterMs = parseRetryAfterMs(result.response.headers, bodyText);
-      markEgressCooling(egress, retryAfterMs);
-
-      // Rotate session for next attempt (free quota is per session)
-      const rotated = rotateSession(prepared);
-      lastRotated = rotated;
-    }
-
-    // Exhausted all candidates. If we rotated the session on a 429, retry the
-    // first egress once more with the fresh session — matches the prefix-
-    // invariance convention: one conversation keeps one session until quota 429.
-    if (lastResult?.response?.status === 429 && lastPrepared && lastRotated) {
-      log?.debug?.("EGRESS", `Retrying first egress with rotated session`);
-      // Re-prepare credentials to pick up the rotated session (new epoch)
-      const retryPrepared = this.prepareRequestCredentials({ ...args, body: retryBody });
-      const retryResult = await super.execute({
-        ...args,
-        credentials: retryPrepared,
-        proxyOptions: null,
-      });
-      if (retryResult?.response?.ok) return retryResult;
-    }
-    log?.warn?.("EGRESS", `All egress candidates exhausted, returning last 429`);
-    return lastResult ?? {
-      response: syntheticRateLimitResponse(EGRESS_CONFIG.defaultCooldownMs),
-      url: targetUrl,
-      headers: {},
-      transformedBody: args.body,
-    };
+    return super.execute({ ...args, credentials: this.prepareRequestCredentials(args) });
   }
 
-  async fetchUpstream(url, options, proxyOptions = null) {
-    const response = await fetchViaTransport(url, options, proxyOptions);
-    if (response) return response;
-    return proxyAwareFetch(url, options, proxyOptions);
-  }
-
-  // Free tier moved from /zen/v1 to /inference/v1 (OpenCode v2); /zen/v1 now
-  // answers every free request with 403 FreeTierError.
   buildUrl(model) {
     const base = this.config.baseUrl;
-    if (isResponsesModel(model)) return `${base}/inference/v1/responses`;
-    if (isMessagesModel(model)) return `${base}/inference/v1/messages`;
-    return `${base}/inference/v1/chat/completions`;
+    if (isResponsesModel(model)) return `${base}/zen/v1/responses`;
+    if (isMessagesModel(model)) return `${base}/zen/v1/messages`;
+    return `${base}/zen/v1/chat/completions`;
   }
 
   buildHeaders(credentials, stream = true, url = "") {
@@ -628,21 +483,17 @@ export class OpenCodeExecutor extends BaseExecutor {
     const downstreamUa = lower["user-agent"] || "";
     const isOpencodeDownstream = hasValidOpencodeVersion(downstreamUa);
 
-    // buildHeaders is called standalone (no body, no conversation hint).
-    // Use the stable identity session so repeated calls are consistent.
-    const session = credentials?.[SESSION_FIELD] || stableSessionId(credentials);
+    const session = credentials?.[SESSION_FIELD] || this.prepareRequestCredentials({ credentials })[SESSION_FIELD];
+    const downstreamReq = normalizeRequestId(lower["x-opencode-request"]);
+    const requestId = credentials?.[REQ_FIELD] || downstreamReq || generateRequestId();
 
-    // Mirrors the v2 CLI. Upstream needs x-opencode-session-id next to
-    // x-opencode-session, and rejects any x-opencode-request (v1 only) with 403.
     const headers = {
       "Content-Type": "application/json",
       "Authorization": "Bearer public",
       "User-Agent": isOpencodeDownstream ? downstreamUa : OPENCODE_UA,
-      "x-opencode-client": lower["x-opencode-client"] || OPENCODE_CLIENT,
+      "x-opencode-client": lower["x-opencode-client"] || "desktop",
       "x-opencode-session": session,
-      "x-opencode-session-id": session,
-      "x-session-affinity": session,
-      "x-session-id": session,
+      "x-opencode-request": requestId,
       "x-opencode-project": lower["x-opencode-project"] || "global",
       "Accept": stream ? "text/event-stream" : "*/*",
     };

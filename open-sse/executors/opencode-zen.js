@@ -8,6 +8,7 @@ import {
   coerceResponsesArguments,
   coerceResponsesOutput,
 } from "../translator/formats/responsesApi.js";
+import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 
 const SESSION_HEADER = "x-opencode-session";
 const SESSION_FIELD = "_opencodeZenSession";
@@ -15,7 +16,7 @@ const MAX_SESSION_LENGTH = 256;
 
 const RESPONSES_BASE_URL = "https://opencode.ai/zen/v1/responses";
 const MAX_TOOL_NAME_LEN = 128;
-const OPENCODE_UA = "opencode/latest/2.2.5/cli";
+const OPENCODE_UA = "opencode/1.18.31";
 export const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 const BASE62_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 // Free-tier fingerprint (mirrors opencode executor, PR #4132): upstream 403s
@@ -23,8 +24,11 @@ const BASE62_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv
 const OPENCODE_FINGERPRINT_TOOLS = ["bash", "glob", "grep", "read"];
 
 function hasValidOpencodeVersion(ua) {
-  const m = String(ua || "").match(/^opencode\/[a-z0-9-]+\/(\d+)\.\d+\.\d+\/[a-z0-9-]+$/i);
-  return !!m && parseInt(m[1], 10) >= 2;
+  const m = String(ua || "").match(/opencode\/(\d+)\.(\d+)(?:\.(\d+))?/i);
+  if (!m) return false;
+  const major = parseInt(m[1], 10);
+  const minor = parseInt(m[2], 10);
+  return major > 1 || (major === 1 && minor >= 17);
 }
 
 function unstableRandom() {
@@ -36,20 +40,15 @@ function unstableRandom() {
   return randomPart;
 }
 
-// Session prefix = 12 hex of ~(timeMs * 0x1000 + counter), low 48 bits, like the CLI.
-// Upstream decodes it and rejects a non-small counter with 403 FreeTierError
-// (live probes: counter 0–16 pass, >=100 fail), so the counter must stay real.
-const SESSION_PREFIX_MASK = (1n << 48n) - 1n;
-const SESSION_TIME_MASK = (1n << 36n) - 1n;
-
-function descendingTimeHex(time, counterValue) {
-  return (~(BigInt(time) * 0x1000n + BigInt(counterValue)) & SESSION_PREFIX_MASK)
-    .toString(16)
-    .padStart(12, "0");
-}
-
 export function generateSessionId(timestamp = Date.now()) {
-  return `ses_${descendingTimeHex(timestamp, 1)}${unstableRandom()}`;
+  const current = BigInt(timestamp) * 0x1000n + 1n;
+  const value = ~current;
+  const time = Array.from({ length: 6 }, (_, index) =>
+    Number((value >> BigInt(40 - 8 * index)) & 0xffn)
+      .toString(16)
+      .padStart(2, "0")
+  ).join("");
+  return `ses_${time}${unstableRandom()}`;
 }
 
 export function generateRequestId(timestamp = Date.now()) {
@@ -63,22 +62,36 @@ export function generateRequestId(timestamp = Date.now()) {
   return `msg_${time}${unstableRandom()}`;
 }
 
+const translatedZenSessions = new Map();
+const MAX_TRANSLATED_SESSIONS = 1000;
+const translatedZenSessionCleanup = setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of translatedZenSessions) {
+    if (now - entry.lastUsed > (MEMORY_CONFIG?.sessionTtlMs || 1800000)) {
+      translatedZenSessions.delete(key);
+    }
+  }
+}, MEMORY_CONFIG?.sessionCleanupIntervalMs || 300000);
+if (translatedZenSessionCleanup.unref) translatedZenSessionCleanup.unref();
+
 export function translateSessionId(sessionId, clientTool = "") {
   if (typeof sessionId === "string" && OPENCODE_SESSION_RE.test(sessionId.trim())) {
     return sessionId.trim();
   }
-  const digest = crypto
-    .createHash("sha256")
-    .update(`opencode\0${clientTool || "generic"}\0${sessionId || ""}`)
-    .digest();
-  // Deterministic time field from the digest, counter pinned to 1 (what the CLI sends).
-  const time = BigInt(`0x${digest.subarray(0, 5).toString("hex")}`) & SESSION_TIME_MASK;
-  const timeHex = descendingTimeHex(time, 1);
-  let randomPart = "";
-  for (let i = 6; i < 20; i++) {
-    randomPart += BASE62_CHARS[digest[i] % 62];
+  const key = `opencode-zen:ses:${clientTool || "generic"}:${sessionId || ""}`;
+  const existing = translatedZenSessions.get(key);
+  if (existing) {
+    existing.lastUsed = Date.now();
+    translatedZenSessions.delete(key);
+    translatedZenSessions.set(key, existing);
+    return existing.sessionId;
   }
-  return `ses_${timeHex}${randomPart}`;
+  const id = generateSessionId();
+  if (translatedZenSessions.size >= MAX_TRANSLATED_SESSIONS) {
+    translatedZenSessions.delete(translatedZenSessions.keys().next().value);
+  }
+  translatedZenSessions.set(key, { sessionId: id, lastUsed: Date.now() });
+  return id;
 }
 
 function toolNameOf(tool) {
@@ -270,20 +283,22 @@ export class OpenCodeZenExecutor extends DefaultExecutor {
     const downstreamUa = lower["user-agent"] || "";
     // Free-tier gate: spoof the official client UA.
     headers["User-Agent"] = hasValidOpencodeVersion(downstreamUa) ? downstreamUa : OPENCODE_UA;
-    headers["x-opencode-client"] = lower["x-opencode-client"] || "cli";
+    headers["x-opencode-client"] = lower["x-opencode-client"] || "desktop";
     headers["x-opencode-project"] = lower["x-opencode-project"] || "global";
     const prepared = credentials?.[SESSION_FIELD];
-    const session = prepared || this.prepareRequestCredentials({ credentials })[SESSION_FIELD];
-    headers[SESSION_HEADER] = session;
-    headers["x-opencode-session-id"] = session;
-    headers["x-session-affinity"] = session;
-    headers["x-session-id"] = session;
+    if (prepared) {
+      headers[SESSION_HEADER] = prepared;
+    } else {
+      const fallback = this.prepareRequestCredentials({ credentials });
+      headers[SESSION_HEADER] = fallback[SESSION_FIELD];
+    }
     if (isOpencodeFreeTierModel(model)) {
       // Free-tier models are gated behind the attested free-tier identity even
       // on the keyed lane: a real oc_sk_* key answers 403 FreeTierError, while
-      // `Bearer public` + session ids succeed. Paid models keep the connection
-      // key untouched. v2 clients do not send x-opencode-request.
+      // `Bearer public` + session/request ids succeed. Paid models keep the
+      // connection key untouched.
       headers["Authorization"] = "Bearer public";
+      headers["x-opencode-request"] = generateRequestId();
     }
     return headers;
   }

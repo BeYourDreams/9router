@@ -11,7 +11,7 @@ import {
   resolveEgress,
 } from "../../open-sse/utils/egress.js";
 
-const TARGET = "https://opencode.ai/inference/v1/chat/completions";
+const TARGET = "https://opencode.ai/zen/v1/chat/completions";
 
 function pool(id, url, extra = {}) {
   return {

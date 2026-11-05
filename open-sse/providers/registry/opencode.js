@@ -15,7 +15,7 @@ export default {
   transport: {
     baseUrl: "https://opencode.ai",
     headers: {
-      "x-opencode-client": "cli",
+      "x-opencode-client": "desktop",
     },
     forceStream: true,
     noAuth: true,
@@ -28,11 +28,6 @@ export default {
     },
     quirks: {
       forceAutoToolChoiceModels: ["muse-spark-1.3-contributor-free"],
-      // The free lane's MiMo route (OpenRouter-backed) streams thinking as
-      // `reasoning` + `reasoning_details[]`, not reasoning_content. stream.js lifts
-      // the alias into reasoning_content for OpenAI-shaped clients; every other
-      // model on the lane already emits reasoning_content, so the lift is a no-op.
-      reasoningAliasFields: true,
     },
   },
   models: [
@@ -46,8 +41,8 @@ export default {
   systemoneConfig: {
     baseUrl: "https://opencode.ai/zen/v1/systemone",
     headers: {
-      "x-opencode-client": "cli",
-      "User-Agent": "opencode/latest/2.2.5/cli",
+      "x-opencode-client": "desktop",
+      "User-Agent": "opencode/1.18.31",
     },
   },
   modelsFetcher: { url: "https://opencode.ai/zen/v1/models", type: "opencode-free" },
