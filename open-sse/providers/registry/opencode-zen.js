@@ -123,7 +123,7 @@ export default {
     baseUrl: "https://opencode.ai/zen/v1/systemone",
     headers: {
       "x-opencode-client": "cli",
-      "User-Agent": "opencode/latest/2.0.26/cli",
+      "User-Agent": "opencode/latest/2.2.5/cli",
     },
   },
   modelsFetcher: { url: "https://opencode.ai/zen/v1/models", type: "opencode-free" },

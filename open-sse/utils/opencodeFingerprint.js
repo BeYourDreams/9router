@@ -23,7 +23,7 @@ import path from "node:path";
 /** Names required by the upstream free-tier gate. */
 export const OPENCODE_FINGERPRINT_TOOLS = ["read", "shell"];
 
-// Verbatim from the OpenCode v2.0.26 CLI. Upstream compares description and
+// Verbatim from the OpenCode v2.2.5 CLI. Upstream compares description and
 // parameters, so do not reword or reformat these.
 const FINGERPRINT_TOOL_DEFINITIONS = {
   read: {
