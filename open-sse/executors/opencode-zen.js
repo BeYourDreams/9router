@@ -15,7 +15,7 @@ const MAX_SESSION_LENGTH = 256;
 
 const RESPONSES_BASE_URL = "https://opencode.ai/zen/v1/responses";
 const MAX_TOOL_NAME_LEN = 128;
-const OPENCODE_UA = "opencode/1.18.31";
+const OPENCODE_UA = "opencode/latest/2.0.26/cli";
 export const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 const BASE62_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 // Free-tier fingerprint (mirrors opencode executor, PR #4132): upstream 403s
@@ -23,11 +23,8 @@ const BASE62_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv
 const OPENCODE_FINGERPRINT_TOOLS = ["bash", "glob", "grep", "read"];
 
 function hasValidOpencodeVersion(ua) {
-  const m = String(ua || "").match(/opencode\/(\d+)\.(\d+)(?:\.(\d+))?/i);
-  if (!m) return false;
-  const major = parseInt(m[1], 10);
-  const minor = parseInt(m[2], 10);
-  return major > 1 || (major === 1 && minor >= 17);
+  const m = String(ua || "").match(/^opencode\/[a-z0-9-]+\/(\d+)\.\d+\.\d+\/[a-z0-9-]+$/i);
+  return !!m && parseInt(m[1], 10) >= 2;
 }
 
 function unstableRandom() {
@@ -273,22 +270,20 @@ export class OpenCodeZenExecutor extends DefaultExecutor {
     const downstreamUa = lower["user-agent"] || "";
     // Free-tier gate: spoof the official client UA.
     headers["User-Agent"] = hasValidOpencodeVersion(downstreamUa) ? downstreamUa : OPENCODE_UA;
-    headers["x-opencode-client"] = lower["x-opencode-client"] || "desktop";
+    headers["x-opencode-client"] = lower["x-opencode-client"] || "cli";
     headers["x-opencode-project"] = lower["x-opencode-project"] || "global";
     const prepared = credentials?.[SESSION_FIELD];
-    if (prepared) {
-      headers[SESSION_HEADER] = prepared;
-    } else {
-      const fallback = this.prepareRequestCredentials({ credentials });
-      headers[SESSION_HEADER] = fallback[SESSION_FIELD];
-    }
+    const session = prepared || this.prepareRequestCredentials({ credentials })[SESSION_FIELD];
+    headers[SESSION_HEADER] = session;
+    headers["x-opencode-session-id"] = session;
+    headers["x-session-affinity"] = session;
+    headers["x-session-id"] = session;
     if (isOpencodeFreeTierModel(model)) {
       // Free-tier models are gated behind the attested free-tier identity even
       // on the keyed lane: a real oc_sk_* key answers 403 FreeTierError, while
-      // `Bearer public` + session/request ids succeed. Paid models keep the
-      // connection key untouched.
+      // `Bearer public` + session ids succeed. Paid models keep the connection
+      // key untouched. v2 clients do not send x-opencode-request.
       headers["Authorization"] = "Bearer public";
-      headers["x-opencode-request"] = generateRequestId();
     }
     return headers;
   }
