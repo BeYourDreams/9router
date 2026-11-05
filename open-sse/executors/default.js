@@ -6,6 +6,7 @@ import { resolveOpenAICompatibleApiType } from "../services/provider.js";
 import { OAUTH_ENDPOINTS, buildKimiHeaders, NOUS_ATTRIBUTION } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { refreshNousToken } from "../services/tokenRefresh.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 import { extractClaudeSessionIdFromUserId } from "../utils/claudeCloaking.js";
@@ -316,7 +317,18 @@ export class DefaultExecutor extends BaseExecutor {
       clinepass: () => this.refreshCline(credentials.refreshToken, proxyOptions),
       kimi: () => this.refreshKimi(credentials, proxyOptions),
       "kimi-coding": () => this.refreshKimi(credentials, proxyOptions),
-      kilocode: () => this.refreshKilocode(credentials.refreshToken, proxyOptions)
+      kilocode: () => this.refreshKilocode(credentials.refreshToken, proxyOptions),
+      nous: async () => {
+        const result = await refreshNousToken(credentials.refreshToken, log);
+        if (!result) return null;
+        return {
+          accessToken: result.accessToken,
+          apiKey: result.apiKey,
+          refreshToken: result.refreshToken,
+          expiresIn: result.expiresIn,
+          providerSpecificData: result.providerSpecificData,
+        };
+      }
     };
 
     const refresher = refreshers[this.provider];

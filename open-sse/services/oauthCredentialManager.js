@@ -26,7 +26,17 @@ function toExpiresAt(expiresIn, nowMs = Date.now()) {
 }
 
 export function getCredentialExpiryMs(credentials) {
-  return parseTimeMs(credentials?.expiresAt ?? credentials?.tokenExpiresAt);
+  // Some providers (e.g. Nous) carry a secondary short-lived credential
+  // (agent key) whose expiry can be earlier than the OAuth access token.
+  // Treat the earliest known expiry as the effective one so proactive refresh
+  // fires before ANY part of the credential stops working.
+  const candidates = [
+    credentials?.expiresAt,
+    credentials?.tokenExpiresAt,
+    credentials?.providerSpecificData?.agentKeyExpiresAt,
+  ];
+  const times = candidates.map(parseTimeMs).filter((value) => value !== null);
+  return times.length ? Math.min(...times) : null;
 }
 
 export function getCredentialLastRefreshMs(credentials) {

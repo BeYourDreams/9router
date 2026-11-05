@@ -245,8 +245,12 @@ export async function checkAndRefreshToken(provider, credentials, options = {}) 
         ...creds,
         refreshToken: latest.refreshToken,
         accessToken: latest.accessToken || creds.accessToken,
+        apiKey: latest.apiKey || creds.apiKey,
         expiresAt: latest.expiresAt || latest.tokenExpiresAt || creds.expiresAt,
         lastRefreshAt: latest.lastRefreshAt || creds.lastRefreshAt,
+        providerSpecificData: latest.providerSpecificData
+          ? { ...creds.providerSpecificData, ...latest.providerSpecificData }
+          : creds.providerSpecificData,
       };
     }
   }
