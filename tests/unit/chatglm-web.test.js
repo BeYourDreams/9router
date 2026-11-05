@@ -105,6 +105,37 @@ describe("chatglm-web adapter", () => {
     expect(out).toContain('"content":"O"');
   });
 
+  it("does not repeat the reply when the closing frame re-sends the whole text", async () => {
+    // Real chatglm.cn shape: the text field carries fragments, then the last frame
+    // repeats the entire reply as one snapshot (that repeat used to double it).
+    const fragments = ["杭州", "：人间天堂", "杭州"];
+    const full = fragments.join("");
+    const parts = (text) => ({ id: "p1", role: "assistant", content: [{ type: "text", text }] });
+    global.fetch = vi.fn(async (url) =>
+      String(url).endsWith("/guest/access")
+        ? new Response(JSON.stringify({ result: { access_token: jwt } }), { status: 200 })
+        : new Response(
+            [
+              ...fragments.map((t) => frame({ status: "init", parts: [parts(t)] })),
+              frame({ status: "init", parts: [parts(full)] }),
+              frame({ status: "finish", parts: [parts(full)] }),
+              "data: [DONE]\n\n",
+            ].join(""),
+            { status: 200, headers: { "Content-Type": "text/event-stream" } }
+          )
+    );
+
+    const out = await readAll((await executeChatGLMWebCleanRoom({ body, credentials: { connectionId: "conn-4" } })).body);
+    const streamed = out
+      .split("\n\n")
+      .filter((b) => b.startsWith("data: "))
+      .map((b) => {
+        try { return JSON.parse(b.slice(6)).choices?.[0]?.delta?.content ?? ""; } catch { return ""; }
+      })
+      .join("");
+    expect(streamed).toBe(full);
+  });
+
   it("throws instead of streaming nothing when upstream returns an empty body", async () => {
     global.fetch = vi.fn(async (url) =>
       String(url).endsWith("/guest/access")

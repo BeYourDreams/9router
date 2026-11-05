@@ -114,6 +114,21 @@ describe("webToolBridge — text tool call upgraded", () => {
     expect(frames.at(-1).choices[0].finish_reason).toBe("tool_calls");
   });
 
+  it("accepts the <tool name=...> attribute dialect (xinghuo-web)", async () => {
+    // Exact payload xinghuo-web returned for the get_weather tool probe.
+    const text = sse([chunk('<tool name="get_weather">{"city": "Beijing"}</tool>'), finishFrame()]);
+    const out = await runThroughStream(text, { requestedTools: TOOLS });
+    const frames = parseEmitted(out);
+    const toolFrames = frames.filter((f) => f.choices?.[0]?.delta?.tool_calls);
+    expect(toolFrames).toHaveLength(1);
+    expect(toolFrames[0].choices[0].delta.tool_calls[0].function).toEqual({
+      name: "get_weather",
+      arguments: '{"city":"Beijing"}',
+    });
+    expect(frames.at(-1).choices[0].finish_reason).toBe("tool_calls");
+    expect(frames.map((f) => f.choices?.[0]?.delta?.content || "").join("")).toBe("");
+  });
+
   it("releases held prose when the marker never closes", async () => {
     const text = sse([chunk("Result <tool is not a call"), finishFrame()]);
     const out = await runThroughStream(text, { requestedTools: TOOLS });

@@ -8,8 +8,12 @@
 
 import { findTagBlocks } from "../utils/tagBlocks.js";
 
-const TOOL_OPEN_RE = /<tool>/g;
+// The opener may carry attributes: xinghuo-web answers `<tool name="get_weather">{"city":"…"}</tool>`,
+// i.e. the name in the tag and the body left as bare arguments.
+const TOOL_OPEN_RE = /<tool(?:\s[^<>]*)?>/g;
 const TOOL_CLOSE_RE = /<\/tool>/g;
+const TOOL_ATTR_NAME_RE = /\bname\s*=\s*["']([^"']+)["']/i;
+const LOOKS_LIKE_TOOL = /<tool(?:_call)?[\s>]/i;
 // Some web-cookie models (e.g. ds-web) wrap calls as `<tool_call name="...">{json}</tool_call>`
 // instead of the canonical `<tool>{...}</tool>`. Capture the JSON body — the real tool name
 // lives there, never in the tag's `name="..."` attribute.
@@ -429,7 +433,7 @@ export function parseToolCallsFromText(text, idSeed = "call", requestedTools) {
   const requestedToolNames = getRequestedToolNames(requestedTools);
   if (
     typeof normalizedText !== "string" ||
-    (!normalizedText.includes("<tool>") && !normalizedText.includes("<tool_call"))
+    !LOOKS_LIKE_TOOL.test(normalizedText)
   ) {
     return { content: text ?? "", toolCalls: null };
   }
@@ -447,6 +451,7 @@ export function parseToolCallsFromText(text, idSeed = "call", requestedTools) {
       raw: block.inner.trim(),
       start: block.start,
       end: block.end,
+      open: block.open,
       requireRequestedTool: false,
     });
   }
@@ -457,12 +462,15 @@ export function parseToolCallsFromText(text, idSeed = "call", requestedTools) {
   const acceptedRanges = [];
   for (const candidate of candidates) {
     const parsed = parseLooseJsonObject(candidate.raw);
-    const emittedName =
+    const bodyName =
       parsed && typeof parsed.name === "string"
         ? parsed.name
         : parsed && typeof parsed.command === "string"
           ? parsed.command
           : null;
+    // `<tool name="x">{args}</tool>`: the tag carries the name and the body is
+    // the arguments object itself, not a name/arguments envelope.
+    const emittedName = bodyName ?? TOOL_ATTR_NAME_RE.exec(candidate.open ?? "")?.[1] ?? null;
     if (!emittedName) continue;
 
     // Nonce binding check: when the tool prompt embedded a nonce, check
@@ -476,7 +484,7 @@ export function parseToolCallsFromText(text, idSeed = "call", requestedTools) {
       resolveRequestedToolName(emittedName, requestedToolNames) ||
       (candidate.requireRequestedTool ? null : emittedName);
     if (!name || (candidate.requireRequestedTool && requestedToolNames.length === 0)) continue;
-    const args = toArgumentsString(parsed?.arguments);
+    const args = toArgumentsString(parsed?.arguments ?? (bodyName ? undefined : parsed));
     toolCalls.push({
       id: `${idSeed}_${toolCalls.length}`,
       type: "function",
@@ -499,15 +507,17 @@ export function parseToolCallsFromText(text, idSeed = "call", requestedTools) {
  *  current user turn far more heavily than a large system block, and ChatGPT's
  *  injection heuristics distrust long instructions embedded in user content —
  *  so the full contract stays in the system block (trailing, see below) and the
- *  user turn only carries a short pointer back to it, naming the tools. */
+ *  user turn only carries a short pointer back to it, naming the tools. The
+ *  pointer repeats the one-line format because some executors (xinghuo, intern,
+ *  ling) forward only the last user turn and drop the system block entirely. */
 function buildToolReminder(toolPrompt) {
   const names = (toolPrompt.match(/^- [^:\n]+/gm) || []).map((s) => s.slice(2).trim()).join(", ");
   return (
-    "\n\n[Client protocol reminder: the client-tool contract in the system instructions " +
-    "is active in this conversation. These client tools ARE available via the <tool> " +
+    "\n\n[Client protocol reminder: these client tools ARE available via the <tool> " +
     "block protocol" +
     (names ? ": " + names : "") +
-    ".]"
+    '. To call one, answer with a single line: {"name": "<tool_name>", "arguments": { ... }} ' +
+    "wrapped in a <tool> block.]"
   );
 }
 

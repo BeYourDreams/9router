@@ -27,6 +27,7 @@ export function findTagBlocks(text, openTag, closeTag) {
     blocks.push({
       start: opening.index,
       end,
+      open: opening[0],
       inner: text.slice(innerStart, closing.index),
     });
     position = end;

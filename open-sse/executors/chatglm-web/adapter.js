@@ -212,8 +212,9 @@ function buildStreamPayload({ prompt, model, bodyObj, conversationId }) {
  *   {"conversation_id":…,"status":"init",
  *    "parts":[{"role":"assistant","status":"init|finish",
  *              "content":[{"type":"think","think":"…"},{"type":"text","text":"…"}]}]}
- * `think`/`text` are cumulative, not deltas, so we diff against the last
- * emitted value and forward only the new tail. A top-level "finish" closes it.
+ * `think`/`text` arrive as fragments of the reply, and the closing frame repeats the
+ * whole text as one snapshot. Diffing each value against the accumulated buffer keeps
+ * that snapshot from being streamed a second time. A top-level "finish" closes it.
  */
 function frameToChunks(frame, state, model) {
   if (!frame || typeof frame !== "object") return [];
@@ -223,15 +224,16 @@ function frameToChunks(frame, state, model) {
   for (const part of Array.isArray(frame.parts) ? frame.parts : []) {
     if (part?.role !== "assistant") continue;
     for (const item of Array.isArray(part.content) ? part.content : []) {
-      // Each part keeps its own cumulative buffer, and a turn can carry several
+      // Each part keeps its own accumulated buffer, and a turn can carry several
       // parts at once — diffing against one shared buffer would re-emit text.
       const key = `${part.id ?? part.logic_id ?? ""}:${item?.type}`;
       const field = item?.type === "think" ? "think" : item?.type === "text" ? "text" : "";
       const value = field ? item[field] : null;
       if (typeof value !== "string") continue;
-      const delta = tail(state.get(key) ?? "", value);
+      const accumulated = state.get(key) ?? "";
+      const delta = textDelta(accumulated, value);
       if (!delta) continue;
-      state.set(key, value);
+      state.set(key, accumulated + delta);
       chunks.push(
         deltaChunk(model, frame.conversation_id,
           field === "think" ? { reasoning_content: delta } : { content: delta })
@@ -241,13 +243,14 @@ function frameToChunks(frame, state, model) {
   return chunks;
 }
 
-/** The not-yet-emitted tail of `next` given the last emitted prefix. */
-function tail(previous, next) {
-  if (!next) return "";
-  if (!previous) return next;
-  if (next.startsWith(previous)) return next.slice(previous.length);
-  // Upstream rewrote the buffer — emit the fresh full text rather than nothing.
-  return next;
+/** What `value` adds to `accumulated`. Upstream sends either the buffer so far
+ *  (a whole-reply snapshot, which starts with what we already emitted) or the
+ *  next fragment (which does not). */
+function textDelta(accumulated, value) {
+  if (!value) return "";
+  if (!accumulated) return value;
+  if (value.startsWith(accumulated)) return value.slice(accumulated.length);
+  return value;
 }
 
 function deltaChunk(model, id, delta) {
