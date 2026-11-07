@@ -1,0 +1,37 @@
+export default {
+  id: "opencode-free-v2",
+  priority: 45,
+  hasFree: true,
+  alias: "ocfv2",
+  uiAlias: "ocfv2",
+  display: {
+    name: "OpenCode Free v2",
+    icon: "terminal",
+    color: "#E87040",
+    textIcon: "V2",
+    notice: {
+      text: "OpenCode Free v2: routes through the bundled opencode-free-bridge (Bun) for TLS fingerprint + self-healing gate. Requires Bun.",
+    },
+  },
+  category: "free",
+  noAuth: true,
+  transport: {
+    baseUrl: "http://127.0.0.1:20135/v1/chat/completions",
+    headers: {},
+  },
+  models: [
+    { id: "iceman-free", name: "Iceman Free" },
+    { id: "nemotron-3.5-super-vl-free", name: "Nemotron 3.5 Super VL Free" },
+    { id: "mimo-v2.6-flash-free", name: "MiMo V2.6 Flash Free" },
+    { id: "nemotron-3.5-lightning-free", name: "Nemotron 3.5 Lightning Free" },
+    { id: "inkling-2-small-free", name: "Inkling 2 Small Free" },
+    { id: "big-pickle", name: "Big Pickle" },
+    { id: "deepseek-v4.1-flash-free", name: "DeepSeek V4.1 Flash Free" },
+    { id: "crouton-alpha-free", name: "Crouton Alpha Free" },
+    { id: "flint-40b-free", name: "Flint 40B Free" },
+    { id: "beam-free", name: "Beam Free" },
+    { id: "glm-5.3-flash-free", name: "GLM 5.3 Flash Free" },
+  ],
+  passthroughModels: true,
+  modelsFetcher: { url: "http://127.0.0.1:20135/v1/models", type: "openai" },
+};

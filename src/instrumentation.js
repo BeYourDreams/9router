@@ -10,5 +10,6 @@ export async function register() {
 
     const { startModelCatalogSync } = await import("@/lib/modelCatalog/sync.js");
     startModelCatalogSync();
+    try { await import("open-sse/services/opencodeFreeBridge.js"); } catch (e) { console.warn("[opencode-free-v2] sidecar boot failed:", e?.message || e); }
   }
 }

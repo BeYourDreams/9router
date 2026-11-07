@@ -71,6 +71,7 @@ import p67 from "./openai.js";
 import p68 from "./opencode-go.js";
 import p68z from "./opencode-zen.js";
 import p69 from "./opencode.js";
+import p163 from "./opencode-free-v2.js";
 import p70 from "./openrouter.js";
 import p71 from "./perplexity-web.js";
 import p72 from "./perplexity.js";
@@ -312,4 +313,5 @@ p153,
   p160,
   p161,
   p162,
+  p163,
 ];
