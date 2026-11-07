@@ -22,6 +22,7 @@ import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
 import { detectClientTool, isNativePassthrough } from "../utils/clientDetector.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
+import { isOpencodeFreeBridgeProvider, syncBridgeEgress } from "../services/opencodeFreeBridge.js";
 import { takeRenamedToolNames } from "../utils/opencodeFingerprint.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
@@ -411,6 +412,15 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   if (proxyOptions.connectionProxyEnabled && proxyOptions.connectionNoProxy) {
     const connectionName = credentials?.connectionName || credentials?.connectionId || "unknown";
     log?.debug?.("PROXY", `${provider.toUpperCase()} | ${model} | conn=${connectionName} | no_proxy=${proxyOptions.connectionNoProxy}`);
+  }
+
+  // The free-v2 lane's real egress is the Bun sidecar, so its proxy belongs
+  // there. Proxying the loopback hop would only wrap a call to 127.0.0.1 and
+  // leave the upstream request direct.
+  if (isOpencodeFreeBridgeProvider(provider)) {
+    await syncBridgeEgress(proxyOptions.connectionProxyEnabled ? proxyOptions.connectionProxyUrl : "");
+    proxyOptions.connectionProxyEnabled = false;
+    proxyOptions.connectionProxyUrl = "";
   }
 
   // Execute request

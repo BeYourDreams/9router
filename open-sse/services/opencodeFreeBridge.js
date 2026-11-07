@@ -13,6 +13,10 @@ function sidecarPath() {
   return path.join(process.cwd(), "scripts", "opencode-free-bridge", "server.js");
 }
 
+export function isOpencodeFreeBridgeProvider(provider) {
+  return provider === "opencode-free-v2" || provider === "ocfv2";
+}
+
 export function getOpencodeFreeBridgeBaseUrl() {
   // Clients reach the loopback bind even when the sidecar binds 0.0.0.0.
   return `http://127.0.0.1:${PORT}/v1`;
@@ -27,6 +31,31 @@ function ping() {
     req.on("error", () => resolve(false));
     req.setTimeout(2000, () => { req.destroy(); resolve(false); });
   });
+}
+
+let syncedEgress = null;
+
+/**
+ * Install the provider's proxy on the sidecar, where the request to
+ * opencode.ai actually leaves from. Pointing 9router's own proxy at the
+ * loopback hop instead only wraps a call to 127.0.0.1, and the real egress
+ * stays direct. One POST per change; the sidecar persists it.
+ */
+export async function syncBridgeEgress(proxyUrl) {
+  const next = proxyUrl || "";
+  if (next === syncedEgress) return true;
+  if (!(await ensureOpencodeFreeBridge())) return false;
+  const res = await fetch(`http://127.0.0.1:${PORT}/api/proxy`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url: next }),
+  }).catch(() => null);
+  if (!res?.ok) {
+    console.warn(`[opencode-free-bridge] egress sync failed (${res?.status ?? "network"})`);
+    return false;
+  }
+  syncedEgress = next;
+  return true;
 }
 
 export async function ensureOpencodeFreeBridge() {
