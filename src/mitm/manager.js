@@ -573,13 +573,11 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
 
   // Step 2: Spawn server (Root CA already installed in Step 1.5)
   // Verify server.js exists — recopy if runtime file was deleted (antivirus/cleanup)
-  let effectiveServerPath = SERVER_PATH;
-  if (!effectiveServerPath || !fs.existsSync(effectiveServerPath)) {
-    log(`[MITM] server.js missing at ${effectiveServerPath} → recopying`);
-    effectiveServerPath = ensureRuntimeServer(resolveBundledServerPath());
-    if (!effectiveServerPath || !fs.existsSync(effectiveServerPath)) {
-      throw new Error(`MITM server.js not found at ${effectiveServerPath}. Reinstall 9router.`);
-    }
+  // Re-resolve on every start: ensureRuntimeServer recopies from the bundled file when the
+  // runtime copy was deleted (antivirus/cleanup) and is a no-op when sizes match.
+  const effectiveServerPath = ensureRuntimeServer(resolveBundledServerPath());
+  if (!effectiveServerPath) {
+    throw new Error("MITM server.js not found. Reinstall 9router.");
   }
   const mitmRouterBase = await resolveMitmRouterBaseUrl();
   log(`🚀 Starting server... (router: ${mitmRouterBase})`);
