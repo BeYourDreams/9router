@@ -3,7 +3,40 @@
 ## Features
 - **Web providers**: give the browser-login (webCookie) providers working tool calling. The web UIs have no function-calling channel, so the model answers a tool request as plain text; previously that text was streamed through verbatim with `finish_reason: "stop"`, so agent clients (Claude Code, Cursor, Cline, …) printed the call instead of running it and the turn ended. A single bridge now injects the `<tool>{…}</tool>` contract into the prompt on the request side and promotes the parsed envelope into real `tool_calls` + `finish_reason: "tool_calls"` on the response side — streaming, aggregated-SSE and non-streaming JSON alike (`open-sse/utils/webToolBridge.js`, `open-sse/utils/webToolPolicy.js`, wired once in `chatCore`). Covers `chatglm-web`, `doubao-web`, `xinghuo-web`, `yiyan-web`, `yuanbao-web`, `ling-web`, `qwen-web`, `xiaomimimo-web`, `intern-web`, `muse-web`, `perplexity-web`, `uc-web` and `veoaifree-web`; `chatgpt-web`, `deepseek-web`, `gemini-web` and `grok-web` keep their dedicated tool pipelines. Assistant prose before a tool block still streams token by token — only the envelope is buffered, and a marker that never resolves is released as ordinary text.
 
-# v0.5.112
+# v0.5.116 (2026-11-08)
+
+## Features
+- **CommandCode**: align data bridge with official CLI v1.88.5 and add credential auto-import
+- **Antigravity**: track and display a separate Gemini 4 Argon weekly/session quota
+- **Codex Image**: add GPT Image 2.6 models (`gpt-image-2.6-flare`, `gpt-image-2.6-sunburst`)
+- **SenseNova**: add `sensenova-6.8-flash` and `glm-5.3`
+
+## Fixes
+- **Transport**: claude provider survives DPI-shaped networks (happy-eyeballs, undici 8, configurable TLS curve)
+- **Lazy Runtime**: fix lost named exports when loading CJS deps from the runtime dir
+- **OpenCode Go**: send Claude reasoning on the Messages transport
+- **Codex Image**: use native OAuth image generation safely
+- **Thinking**: keep thinking config on OpenAI tool-result turns (#5171)
+- **OpenCode Free**: alias "terminal" tool names the free tier 429-rejects (#5319)
+- **TTS**: list public voices without dashboard self-fetch auth (#1551)
+- **Translator**: retain Claude cache markers for DashScope targets (#2069)
+- **CLI**: launcher startup ~2.5x faster via PID-file process handling
+- **Gemini**: send concrete MIME for remote images instead of `image/*`
+- **Translator**: keep all Gemini tool results and follow-up parts (#2393)
+- **Codex Image**: drop `reasoning.effort` on tool requests, surface real upstream errors
+- **CLI**: ship `deepseek-pow-hash.js` next to the PoW worker (#5460)
+- **Web Fetch**: forward the selected output format to Jina and Tavily (#2239)
+- **Kiro**: stop splicing unserved regions into service hostnames; add `KIRO_INTEGRITY_GATE=off`
+- **Thinking**: preserve explicit DeepSeek thinking budgets on compat nodes (#5108)
+- **Tray**: report a tray that never started instead of claiming success
+- **Fetch**: stop reusing dead keep-alive sockets silently dropped by upstream edges
+- **CodeBuddy**: preserve client system prompts and sanitize CLI agent identity (intl WAF)
+- **OpenCode Go**: use current inference endpoints (`/zen/go/v1` retired)
+- **CLI Tools**: Add All Active Models now includes no-auth, alias and custom models (#5449)
+- **Runtime**: pass `--global=false` so npm hooks can't create stray global installs (#5443)
+- **Dedupe**: drop `tool_reference` blocks naming tools stripped by MCP dedupe (z.ai 400)
+
+# v0.5.112 (2026-10-28)
 
 ## Features
 - **MiniMax Code**: add lease auth mode that rides the desktop app's sign-in through a named-pipe/unix-socket broker (length-prefixed JSON protocol, broker-owned token refresh — no refresh token held locally since MiniMax tokens are single-use), with a dashboard lease button and usage attribution
