@@ -63,6 +63,7 @@ const USAGE_HANDLERS = {
   kimi: (c) => getKimiUsage(c.accessToken, c.apiKey, c.proxyOptions, c.providerSpecificData),
   "opencode-go": (c) => getOpenCodeGoUsage(c.apiKey, c.proxyOptions),
   "opencode-zen": (c) => getOpenCodeZenUsage(c.apiKey, c.proxyOptions),
+  "opencode-zen-v2": (c) => getOpenCodeZenUsage(c.apiKey, c.proxyOptions),
   deepseek: (c) => getDeepseekUsage(c.apiKey, c.proxyOptions),
   groq: (c) => getGroqUsage(c.apiKey, c.proxyOptions),
   zed: (c) => getZedUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),

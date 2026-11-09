@@ -600,6 +600,60 @@ describe("server unit & integration tests", () => {
       }
     });
 
+    it("forwards a client key for paid models and keeps the public identity for free ones", async () => {
+      // opencode-zen-v2 rides this bridge with a real Zen key. A paid id must
+      // reach upstream as the caller, a free id must keep `Bearer public`, and a
+      // keyed refusal must not be mistaken for a free-tier gate move.
+      const realVerdict = identity.getCatalogVerdict;
+      identity.getCatalogVerdict = (id) => {
+        const lower = String(id).toLowerCase();
+        if (lower === "gpt-5.4") return "paid";
+        if (lower === "big-pickle") return "free";
+        return undefined;
+      };
+      const sent = [];
+      let calls = 0;
+      try {
+        mockFetchImpl = async (_url, init) => {
+          calls++;
+          sent.push({ auth: init.headers.Authorization, model: JSON.parse(init.body).model });
+          return { ok: true, status: 200, body: sseStreamFromLines(["data: [DONE]\n\n"]) };
+        };
+        const paid = await httpRequest(port, "POST", "/v1/chat/completions", {
+          model: "gpt-5.4",
+          messages: [{ role: "user", content: "hi" }],
+        }, { Authorization: "Bearer oc_sk_test_key" });
+        assert.equal(paid.status, 200);
+        assert.deepEqual(sent.pop(), { auth: "Bearer oc_sk_test_key", model: "gpt-5.4" });
+
+        const free = await httpRequest(port, "POST", "/v1/chat/completions", {
+          model: "big-pickle",
+          messages: [{ role: "user", content: "hi" }],
+        }, { Authorization: "Bearer oc_sk_test_key" });
+        assert.equal(free.status, 200);
+        assert.equal(sent.pop().auth, "Bearer public");
+
+        calls = 0;
+        mockFetchImpl = async () => {
+          calls++;
+          return {
+            ok: false,
+            status: 403,
+            text: async () => JSON.stringify({ error: { type: "FreeTierError", message: "upgrade required" } }),
+            headers: new Map(),
+          };
+        };
+        const refused = await httpRequest(port, "POST", "/v1/chat/completions", {
+          model: "gpt-5.4",
+          messages: [{ role: "user", content: "hi" }],
+        }, { Authorization: "Bearer oc_sk_test_key" });
+        assert.equal(refused.status, 403);
+        assert.equal(calls, 1, "a keyed refusal is the account's own, not a free-tier gate move to retry");
+      } finally {
+        identity.getCatalogVerdict = realVerdict;
+      }
+    });
+
     it("lets the catalog, not the model's name, decide what is free", async () => {
       // The gateway's /models list is not the authority: it can still list a
       // model the catalog marks deprecated, and it can omit one the catalog

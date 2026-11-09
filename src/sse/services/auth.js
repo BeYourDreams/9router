@@ -42,6 +42,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 
     // Resolve alias to provider ID (e.g., "kc" -> "kilocode")
     const providerId = resolveProviderId(provider);
+    // opencode-zen-v2 reuses opencode-zen connections (same API key).
+    const connectionProviderId = providerId === "opencode-zen-v2" ? "opencode-zen" : providerId;
 
     // Inject a virtual connection for no-auth free providers (with optional proxy pool from settings)
     if (FREE_PROVIDERS[providerId]?.noAuth) {
@@ -92,7 +94,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       };
     }
 
-    const connections = await getProviderConnections({ provider: providerId, isActive: true });
+    const connections = await getProviderConnections({ provider: connectionProviderId, isActive: true });
     log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
 
     if (connections.length === 0) {

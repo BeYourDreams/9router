@@ -765,10 +765,11 @@ async function discoverModels() {
   }
 }
 
-function normalizeModel(rawModel) {
+function normalizeModel(rawModel, keyed) {
   if (typeof rawModel !== "string") return "";
   const stripped = rawModel.trim().replace(/^(opencode\/|oc\/|zen\/|9router\/|openai\/)/i, "").trim();
   if (!stripped) return "";
+  if (keyed) return stripped;
   // A name that is already a real model id is passed through untouched; only a
   // shorthand is resolved. The catalog's families are consulted first, so a
   // revision that retired keeps resolving to a live sibling without a bridge
@@ -1477,7 +1478,7 @@ function getProjectId() {
   }
 }
 
-function buildUpstreamHeaders(req, sessionId) {
+function buildUpstreamHeaders(req, sessionId, targetModel, keyed) {
   const downstreamUa = req?.headers?.["user-agent"] || "";
   const ua = isValidV2UserAgent(downstreamUa) ? downstreamUa : gateSafeUserAgent();
   const client = req?.headers?.["x-opencode-client"];
@@ -1498,8 +1499,14 @@ function buildUpstreamHeaders(req, sessionId) {
     project: String(project),
     sessionId,
   });
+  // A keyed caller (opencode-zen-v2) authenticates its own paid models; the free
+  // lane keeps the attested public identity this bridge exists to impersonate.
+  const clientAuth =
+    keyed && identity.getCatalogVerdict(String(targetModel || "").toLowerCase()) === "paid"
+      ? req?.headers?.authorization || req?.headers?.Authorization || ""
+      : "";
   return {
-    "Authorization": "Bearer public",
+    "Authorization": clientAuth || "Bearer public",
     "Content-Type": "application/json",
     // The CLI sends `*/*` here (it always streams via the body, not the Accept
     // header). Matching it costs nothing and removes a difference the gate
@@ -2111,7 +2118,9 @@ function handleRequest(req, res) {
         );
       }
 
-      const targetModel = normalizeModel(body.model);
+      const _authHeader = req.headers?.["authorization"] || req.headers?.["Authorization"] || "";
+      const keyed = !!_authHeader && !/^Bearer\s+public$/i.test(_authHeader);
+      const targetModel = normalizeModel(body.model, keyed);
       if (!targetModel) {
         res.writeHead(400, { "Content-Type": "application/json" });
         return res.end(
@@ -2131,7 +2140,8 @@ function handleRequest(req, res) {
       // zero can only fail upstream. Say that here — an upstream 401 ("no
       // session") sends the user hunting for a login that does not exist.
       const modelVerdict = identity.getCatalogVerdict(targetModel);
-      if (modelVerdict && modelVerdict !== "free") {
+      const paidWithKey = keyed && modelVerdict === "paid";
+      if (modelVerdict && modelVerdict !== "free" && !paidWithKey) {
         const isRetired = modelVerdict === "deprecated";
         res.writeHead(404, { "Content-Type": "application/json" });
         return res.end(
@@ -2173,7 +2183,7 @@ function handleRequest(req, res) {
       let useResponses = isResponsesModel(targetModel);
       const sessionId = getPersistentSessionId(req, body);
       let retryHeaders = null;
-      const upstreamHeaders = buildUpstreamHeaders(req, sessionId);
+      const upstreamHeaders = buildUpstreamHeaders(req, sessionId, targetModel, keyed);
 
       const abortController = new AbortController();
       let timedOut = false;
@@ -2362,7 +2372,7 @@ function handleRequest(req, res) {
             await upstreamRes.text();
           } catch {}
           const retry5xxSid = regenerateSessionId(req, body, sessionId);
-          const retry5xxHeaders = buildUpstreamHeaders(req, retry5xxSid);
+          const retry5xxHeaders = buildUpstreamHeaders(req, retry5xxSid, targetModel, keyed);
           console.warn(
             `[opencode-free-bridge] Upstream returned ${first5xx}` +
               (firstLogId ? ` [x-opencode-log-id: ${firstLogId}]` : "") +
@@ -2425,7 +2435,7 @@ function handleRequest(req, res) {
             );
           }
 
-          if (!isFreeTierCliGateError(upstreamRes.status, errType, rawMsg)) {
+          if (keyed || !isFreeTierCliGateError(upstreamRes.status, errType, rawMsg)) {
             const upstreamLogId =
               typeof upstreamRes.headers?.get === "function"
                 ? upstreamRes.headers.get("x-opencode-log-id")
@@ -2536,7 +2546,7 @@ function handleRequest(req, res) {
             // new URL — reusing the pre-refresh value would defeat the derivation.
             liveEndpoints = resolveEndpoints(targetModel);
             upstreamUrl = useResponses ? liveEndpoints.responsesUrl : liveEndpoints.chatUrl;
-            retryHeaders = buildUpstreamHeaders(req, retrySessionId);
+            retryHeaders = buildUpstreamHeaders(req, retrySessionId, targetModel, keyed);
             upstreamRes = await upstreamFetch(upstreamUrl, {
               method: "POST",
               headers: retryHeaders,
