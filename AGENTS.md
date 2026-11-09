@@ -18,7 +18,10 @@
    `taskkill` a process on 20128 and never delete `.next`.
 
    Keep `.next-sandbox` — do not delete it. Turbopack's build cache lives in
-   `<distDir>/cache/turbopack`, so a warm sandbox build compiles in ~24s vs ~41s cold.
+   `<distDir>/cache/turbopack`, and `next.config.mjs` sets `cleanDistDir: false` so the
+   cache survives between builds: a warm sandbox build is ~35-55s (compile ~2s).
+   Deleting the dist dir makes the next build ~115s — 30s to recreate the tree, 25s cold compile
+   and ~59s writing `standalone/`.
    (A plain `.next` build is only for an actual release, and only when nothing is
    running on 20128.)
 

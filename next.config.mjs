@@ -12,6 +12,12 @@ const proxyClientMaxBodySize = process.env.NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  // Not cleaning distDir keeps Turbopack's on-disk cache (<distDir>/cache/turbopack):
+  // a warm build drops from ~115s to ~35-55s (cache load + compile ~2s instead of
+  // a 30s delete + 25-34s cold compile). Stale chunks are unreferenced and harmless;
+  // `output: standalone` still rm -rf's its own tree, and `npm start` re-checks
+  // BUILD_ID. Delete <distDir> by hand for a guaranteed cold build.
+  cleanDistDir: false,
   output: "standalone",
   // `open` must stay external. It derives its own directory from `import.meta.url`, and
   // webpack replaces that with the absolute path of the BUILD machine as a string literal.
