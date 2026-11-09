@@ -82,10 +82,12 @@ const nous = {
       }
 
       const data = await response.json();
+      const agentKeyExpiresAt = data.expires_at
+        || (data.expires_in ? new Date(Date.now() + data.expires_in * 1000).toISOString() : null);
       return {
         agentKey: data.api_key || null,
         agentKeyId: data.key_id || null,
-        agentKeyExpiresAt: data.expires_at || null,
+        agentKeyExpiresAt,
         agentKeyExpiresIn: data.expires_in || null,
       };
     } catch (err) {
@@ -102,7 +104,12 @@ const nous = {
     providerSpecificData: {
       inferenceBaseUrl: NOUS_CONFIG.inferenceBaseUrl,
       ...(extra?.agentKeyId ? { agentKeyId: extra.agentKeyId } : {}),
-      ...(extra?.agentKeyExpiresAt ? { agentKeyExpiresAt: extra.agentKeyExpiresAt } : {}),
+      ...(extra?.agentKeyExpiresAt
+      ? { agentKeyExpiresAt: extra.agentKeyExpiresAt }
+      : extra?.agentKeyExpiresIn
+        ? { agentKeyExpiresAt: new Date(Date.now() + extra.agentKeyExpiresIn * 1000).toISOString() }
+        : {}),
+      ...(extra?.agentKeyExpiresIn ? { agentKeyExpiresIn: extra.agentKeyExpiresIn } : {}),
     },
   }),
 };

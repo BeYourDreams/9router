@@ -35,6 +35,13 @@ export function getCredentialExpiryMs(credentials) {
     credentials?.tokenExpiresAt,
     credentials?.providerSpecificData?.agentKeyExpiresAt,
   ];
+  // Fall back to a relative agent-key TTL when only expires_in was recorded
+  // (some Nous Portal responses omit expires_at).
+  const agentKeyExpiresIn = credentials?.providerSpecificData?.agentKeyExpiresIn;
+  if (agentKeyExpiresIn && !credentials?.providerSpecificData?.agentKeyExpiresAt) {
+    const base = parseTimeMs(credentials?.lastRefreshAt) || Date.now();
+    candidates.push(base + agentKeyExpiresIn * 1000);
+  }
   const times = candidates.map(parseTimeMs).filter((value) => value !== null);
   return times.length ? Math.min(...times) : null;
 }

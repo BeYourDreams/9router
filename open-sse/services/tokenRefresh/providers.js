@@ -806,6 +806,7 @@ export async function refreshNousToken(refreshToken, log) {
       let agentKey = null;
       let agentKeyId = null;
       let agentKeyExpiresAt = null;
+      let agentKeyExpiresIn = null;
       try {
         const agentKeyResponse = await fetch("https://portal.nousresearch.com/api/oauth/agent-key", {
           method: "POST",
@@ -824,7 +825,11 @@ export async function refreshNousToken(refreshToken, log) {
           const agentKeyData = await agentKeyResponse.json();
           agentKey = agentKeyData.api_key || null;
           agentKeyId = agentKeyData.key_id || null;
-          agentKeyExpiresAt = agentKeyData.expires_at || null;
+          agentKeyExpiresIn = agentKeyData.expires_in || null;
+          agentKeyExpiresAt = agentKeyData.expires_at
+            || (agentKeyExpiresIn
+              ? new Date(Date.now() + agentKeyExpiresIn * 1000).toISOString()
+              : null);
           log?.info?.("TOKEN_REFRESH", "Nous agent key minted successfully");
         } else {
           const error = await agentKeyResponse.text().catch(() => "");
@@ -843,6 +848,7 @@ export async function refreshNousToken(refreshToken, log) {
         providerSpecificData: {
           ...(agentKeyId ? { agentKeyId } : {}),
           ...(agentKeyExpiresAt ? { agentKeyExpiresAt } : {}),
+          ...(agentKeyExpiresIn ? { agentKeyExpiresIn } : {}),
         },
       };
     } catch (error) {
