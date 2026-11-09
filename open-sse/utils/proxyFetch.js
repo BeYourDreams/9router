@@ -9,6 +9,7 @@ import {
   isFreshSocketReplayEnabled,
 } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
+import { normalizeString, normalizeProxyUrl, resolveEffectiveProxyUrl } from "./proxyResolution.js";
 
 const proxyDispatchers = new Map();
 const directDispatchers = new Map();
@@ -157,6 +158,38 @@ const GOOGLE_DNS_SERVERS = ["8.8.8.8", "8.8.4.4"];
 const HTTPS_PORT = 443;
 const HTTP_SUCCESS_MIN = 200;
 const HTTP_SUCCESS_MAX = 300;
+
+/**
+ * Resolve real IP using Google DNS (bypass system DNS)
+ */
+async function resolveRealIP(hostname) {
+  const cached = DNS_CACHE.get(hostname);
+  if (cached && Date.now() < cached.expiry) return cached.ip;
+
+  try {
+    const dns = await import("dns");
+    const { promisify } = await import("util");
+    const resolver = new dns.Resolver();
+    resolver.setServers(GOOGLE_DNS_SERVERS);
+    const resolve4 = promisify(resolver.resolve4.bind(resolver));
+    const addresses = await resolve4(hostname);
+    DNS_CACHE.set(hostname, { ip: addresses[0], expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs });
+    return addresses[0];
+  } catch (error) {
+    console.warn(`[ProxyFetch] DNS resolve failed for ${hostname}:`, error.message);
+    return null;
+  }
+}
+
+/**
+ * Check if request should bypass MITM DNS redirect
+ */
+function shouldBypassMitmDns(url) {
+  try {
+    const hostname = new URL(url).hostname;
+    return MITM_BYPASS_HOSTS.some(host => hostname.includes(host));
+  } catch { return false; }
+}
 
 // ISP DPI (VN → api.anthropic.com) RSTs Node's default TLS ClientHello curve
 // list; a single curve rewrites the fingerprint enough to pass. Empirically:

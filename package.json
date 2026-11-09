@@ -4,14 +4,10 @@
   "description": "9Router web dashboard",
   "private": true,
   "scripts": {
-    "dev": "node scripts/dev-server.mjs",
-    "dev:webpack": "node scripts/dev-server.mjs --webpack",
-    "build": "node scripts/build-server.mjs",
-    "postbuild:bun": "node scripts/copy-standalone-assets.mjs",
-    "start": "node scripts/start-server.mjs",
-    "dev:bun": "bun --bun next dev --webpack",
-    "build:bun": "bun --bun next build --webpack",
-    "start:bun": "bun ./scripts/start-server.mjs",
+    "dev": "bun scripts/dev-server.mjs",
+    "dev:webpack": "bun scripts/dev-server.mjs --webpack",
+    "build": "bun scripts/build-server.mjs",
+    "start": "bun scripts/start-server.mjs",
     "cli:pack": "npm --prefix cli run pack:cli",
     "cli:publish": "npm --prefix cli run publish:cli"
   },
