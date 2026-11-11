@@ -7,6 +7,7 @@ import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { isMuseSparkModel } from "../providers/models/helpers.js";
 import { applyFingerprintTools } from "../utils/opencodeFingerprint.js";
+import { executeFreeLane } from "./opencode-free-lane.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import {
   normalizeResponsesInput,
@@ -465,7 +466,14 @@ export class OpenCodeExecutor extends BaseExecutor {
   }
 
   async execute(args) {
-    return super.execute({ ...args, credentials: this.prepareRequestCredentials(args) });
+    const credentials = this.prepareRequestCredentials(args);
+    return executeFreeLane({
+      run: () => super.execute({ ...args, credentials }),
+      stores: [stableOpencodeSessions, translatedOpencodeSessions],
+      sessionId: credentials[SESSION_FIELD],
+      signal: args.signal,
+      log: args.log,
+    });
   }
 
   buildUrl(model) {

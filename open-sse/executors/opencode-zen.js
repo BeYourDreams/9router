@@ -9,6 +9,7 @@ import {
   coerceResponsesOutput,
 } from "../translator/formats/responsesApi.js";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
+import { executeFreeLane } from "./opencode-free-lane.js";
 
 const SESSION_HEADER = "x-opencode-session";
 const SESSION_FIELD = "_opencodeZenSession";
@@ -272,7 +273,13 @@ export class OpenCodeZenExecutor extends DefaultExecutor {
 
   async execute(args) {
     const credentials = this.prepareRequestCredentials(args);
-    return super.execute({ ...args, credentials });
+    return executeFreeLane({
+      run: () => super.execute({ ...args, credentials }),
+      stores: [translatedZenSessions],
+      sessionId: credentials[SESSION_FIELD],
+      signal: args.signal,
+      log: args.log,
+    });
   }
 
   buildHeaders(credentials, stream = true, url, model) {
