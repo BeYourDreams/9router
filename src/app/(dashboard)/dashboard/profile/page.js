@@ -649,6 +649,27 @@ export default function ProfilePage() {
     }
   };
 
+  // Stored bodies are dropped when they exceed this size, so a chat request with
+  // a long history silently lands in Details as a `_truncated` marker. It is
+  // configurable because the useful ceiling differs a lot between users.
+  const updateObservabilityMaxJsonSize = async (rawKb) => {
+    const kb = Number(rawKb);
+    if (!Number.isFinite(kb) || kb < 1) return;
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ observabilityMaxJsonSize: Math.min(Math.round(kb), 10240) }),
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setSettings(prev => ({ ...prev, observabilityMaxJsonSize: data.observabilityMaxJsonSize ?? Math.round(kb) }));
+      }
+    } catch (err) {
+      console.error("Failed to update observabilityMaxJsonSize:", err);
+    }
+  };
+
   const reloadSettings = async () => {
     try {
       const res = await fetch("/api/settings");
@@ -1619,6 +1640,28 @@ export default function ProfilePage() {
               disabled={loading}
             />
           </div>
+
+          {observabilityEnabled && (
+            <div className="mt-4 flex flex-col gap-2 border-t border-border/50 pt-4">
+              <label htmlFor="observability-max-json-size" className="text-sm font-medium">
+                Max stored body size (KB)
+              </label>
+              <p className="text-xs sm:text-sm text-text-muted">
+                Request and response bodies larger than this are not stored — the Details drawer only
+                keeps a size marker and preview. Default 5 KB is smaller than most real chat requests.
+              </p>
+              <Input
+                id="observability-max-json-size"
+                type="number"
+                min="1"
+                max="10240"
+                defaultValue={settings.observabilityMaxJsonSize ?? 5}
+                disabled={loading}
+                onBlur={(e) => updateObservabilityMaxJsonSize(e.target.value)}
+                className="max-w-[160px]"
+              />
+            </div>
+          )}
         </Card>
 
         {/* Account actions */}

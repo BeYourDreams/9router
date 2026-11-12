@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRequestDetails } from "@/lib/usageDb";
+import { getSettings } from "@/lib/localDb";
+import { normalizeObservabilityMaxJsonSize } from "@/lib/db/index.js";
 
 /**
  * GET /api/usage/request-details
@@ -48,12 +50,15 @@ export async function GET(request) {
     
     const result = await getRequestDetails(filter);
 
-    // Redact conversation payloads: the stored details include full request
-    // bodies (user prompts, tool calls) and provider responses. Returning them
-    // wholesale lets any dashboard-authenticated user (or, if requireLogin is
-    // disabled, anyone) read every user's conversation history. Keep the
-    // metadata (model, tokens, latency, status) but drop message content.
-    const redactedDetails = (result.details || []).map((d) => {
+    // Conversation payloads are only returned while Observability is enabled —
+    // that setting is the explicit opt-in for recording prompts/responses, and
+    // it is what the Details drawer's request/response panes exist for. With it
+    // off, send metadata only so every stored body is still redacted.
+    const settings = await getSettings().catch(() => ({}));
+    const observabilityEnabled = settings?.enableObservability === true;
+
+    const details = (result.details || []).map((d) => {
+      if (observabilityEnabled) return d;
       const redacted = { ...d };
       for (const key of ["request", "providerRequest", "providerResponse", "response"]) {
         if (redacted[key] !== undefined) {
@@ -63,7 +68,12 @@ export async function GET(request) {
       return redacted;
     });
 
-    return NextResponse.json({ ...result, details: redactedDetails });
+    return NextResponse.json({
+      ...result,
+      details,
+      observabilityEnabled,
+      maxJsonSizeBytes: normalizeObservabilityMaxJsonSize(settings?.observabilityMaxJsonSize) * 1024,
+    });
   } catch (error) {
     console.error("[API] Failed to get request details:", error);
     return NextResponse.json(

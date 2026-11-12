@@ -7,6 +7,7 @@ import { KEY_ACCESS_UNRESTRICTED } from "@/shared/constants/keyAccess.js";
 // Settings
 export {
   getSettings, updateSettings, isCloudEnabled, getCloudUrl, exportSettings,
+  normalizeObservabilityMaxJsonSize,
 } from "./repos/settingsRepo.js";
 
 // Provider connections

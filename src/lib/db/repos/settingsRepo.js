@@ -69,6 +69,20 @@ const DEFAULT_SETTINGS = {
   providerOverrides: {},
 };
 
+// Hard ceiling for the observability body cap: every stored row can carry 4
+// JSON payloads, so an unbounded value lets a handful of requests pin tens of
+// MB each in SQLite and in every Details response. 10 MB per payload is plenty.
+const OBSERVABILITY_MAX_JSON_SIZE_KB_LIMIT = 10 * 1024;
+
+/** Clamp observabilityMaxJsonSize (KB) into a sane range; non-numeric → default. */
+export function normalizeObservabilityMaxJsonSize(value) {
+  const n = Number(value);
+  if (value === undefined || value === null || value === "" || !Number.isFinite(n)) {
+    return DEFAULT_SETTINGS.observabilityMaxJsonSize;
+  }
+  return Math.min(Math.max(Math.round(n), 1), OBSERVABILITY_MAX_JSON_SIZE_KB_LIMIT);
+}
+
 async function readRaw() {
   const db = await getAdapter();
   const row = db.get(`SELECT data FROM settings WHERE id = 1`);
@@ -101,6 +115,7 @@ export function mergeWithDefaults(raw) {
       }
     }
   }
+  merged.observabilityMaxJsonSize = normalizeObservabilityMaxJsonSize(merged.observabilityMaxJsonSize);
   return merged;
 }
 

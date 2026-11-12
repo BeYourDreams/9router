@@ -90,6 +90,58 @@ function getCacheCreationTokens(tokens) {
   return tokens?.cache_creation_input_tokens || 0;
 }
 
+function isTruncated(payload) {
+  return !!payload && typeof payload === "object" && payload._truncated === true;
+}
+
+function isRedacted(payload) {
+  return !!payload && typeof payload === "object" && payload.redacted === true;
+}
+
+/**
+ * Render a stored request/response body. The detail rows keep only a
+ * `_truncated` marker when the payload exceeded observabilityMaxJsonSize (or
+ * `{ redacted: true }` when Observability is off), so explain that instead of
+ * printing "{}" — an empty pane is otherwise indistinguishable from a bug.
+ */
+function PayloadPane({ payload, emptyLabel = "[Not captured for this request]", maxJsonSizeBytes = null }) {
+  if (payload === undefined || payload === null) {
+    return <p className="text-xs text-text-muted">{emptyLabel}</p>;
+  }
+
+  if (isRedacted(payload)) {
+    return (
+      <p className="text-xs text-text-muted">
+        Request bodies are hidden because Observability is off. Enable it in Profile → Observability to record them.
+      </p>
+    );
+  }
+
+  if (isTruncated(payload)) {
+    return (
+      <div className="flex flex-col gap-2 text-xs text-text-muted">
+        <p>
+          Payload not stored: it was {(payload._originalSize || 0).toLocaleString()} characters, over the
+          observability size limit
+          {maxJsonSizeBytes ? ` (${Math.round(maxJsonSizeBytes / 1024)} KB)` : ""}. Raise it in
+          Profile → Observability to keep full bodies.
+        </p>
+        {payload._preview && (
+          <pre className="max-h-[300px] max-w-full overflow-auto rounded-lg border border-black/5 bg-black/5 p-3 font-mono text-xs text-text-main dark:border-white/5 dark:bg-white/5 sm:p-4">
+            {payload._preview}…
+          </pre>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <pre className="max-h-[300px] max-w-full overflow-auto rounded-lg border border-black/5 bg-black/5 p-3 font-mono text-xs text-text-main dark:border-white/5 dark:bg-white/5 sm:p-4">
+      {typeof payload === "object" ? JSON.stringify(payload, null, 2) : String(payload)}
+    </pre>
+  );
+}
+
 function getInputTokens(tokens) {
   const prompt = tokens?.prompt_tokens || tokens?.input_tokens || 0;
   // Canonical storage keeps prompt cache-inclusive. Legacy Claude rows may have
@@ -112,6 +164,10 @@ export default function RequestDetailsTab() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [providers, setProviders] = useState([]);
   const [providerNameCache, setProviderNameCache] = useState(null);
+  // Whether the server still stores request/response payloads. When it doesn't
+  // (Observability off) the drawer's body panes are empty by design.
+  const [observabilityEnabled, setObservabilityEnabled] = useState(null);
+  const [maxJsonSizeBytes, setMaxJsonSizeBytes] = useState(null);
   const [filters, setFilters] = useState({
     provider: "",
     startDate: "",
@@ -147,6 +203,12 @@ export default function RequestDetailsTab() {
 
       setDetails(data.details || []);
       setPagination(prev => ({ ...prev, ...data.pagination }));
+      if (typeof data.observabilityEnabled === "boolean") {
+        setObservabilityEnabled(data.observabilityEnabled);
+      }
+      if (typeof data.maxJsonSizeBytes === "number") {
+        setMaxJsonSizeBytes(data.maxJsonSizeBytes);
+      }
     } catch (error) {
       console.error("Failed to fetch request details:", error);
     } finally {
@@ -266,7 +328,7 @@ export default function RequestDetailsTab() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
+                  <td colSpan="9" className="p-8 text-center text-text-muted">
                     <div className="flex items-center justify-center gap-2">
                       <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
                       Loading...
@@ -275,8 +337,16 @@ export default function RequestDetailsTab() {
                 </tr>
               ) : details.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
-                    No request details found
+                  <td colSpan="9" className="p-8 text-center text-text-muted">
+                    <div className="mx-auto flex max-w-md flex-col items-center gap-2">
+                      <span className="material-symbols-outlined text-[24px] opacity-60">inbox</span>
+                      <p>No request details found</p>
+                      <p className="text-xs">
+                        {observabilityEnabled === false
+                          ? "Observability is off — request details are not recorded. Enable it in Profile → Observability, then send a request."
+                          : "Requests appear here once Observability has recorded them (writes flush every few seconds)."}
+                      </p>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -457,27 +527,18 @@ export default function RequestDetailsTab() {
 
             <div className="space-y-4">
               <CollapsibleSection title="1. Client Request (Input)" defaultOpen={true} icon="input">
-                <pre className="max-h-[300px] max-w-full overflow-auto rounded-lg border border-black/5 bg-black/5 p-3 font-mono text-xs text-text-main dark:border-white/5 dark:bg-white/5 sm:p-4">
-                  {JSON.stringify(selectedDetail.request, null, 2)}
-                </pre>
+                <PayloadPane payload={selectedDetail.request} emptyLabel="[Request body not captured for this request]" maxJsonSizeBytes={maxJsonSizeBytes} />
               </CollapsibleSection>
 
               {selectedDetail.providerRequest && (
                 <CollapsibleSection title="2. Provider Request (Translated)" icon="translate">
-                  <pre className="max-h-[300px] max-w-full overflow-auto rounded-lg border border-black/5 bg-black/5 p-3 font-mono text-xs text-text-main dark:border-white/5 dark:bg-white/5 sm:p-4">
-                    {JSON.stringify(selectedDetail.providerRequest, null, 2)}
-                  </pre>
+                  <PayloadPane payload={selectedDetail.providerRequest} maxJsonSizeBytes={maxJsonSizeBytes} />
                 </CollapsibleSection>
               )}
 
               {selectedDetail.providerResponse && (
                 <CollapsibleSection title="3. Provider Response (Raw)" icon="data_object">
-                  <pre className="max-h-[300px] max-w-full overflow-auto rounded-lg border border-black/5 bg-black/5 p-3 font-mono text-xs text-text-main dark:border-white/5 dark:bg-white/5 sm:p-4">
-                    {typeof selectedDetail.providerResponse === 'object'
-                      ? JSON.stringify(selectedDetail.providerResponse, null, 2)
-                      : selectedDetail.providerResponse
-                    }
-                  </pre>
+                  <PayloadPane payload={selectedDetail.providerResponse} maxJsonSizeBytes={maxJsonSizeBytes} />
                 </CollapsibleSection>
               )}
               
@@ -497,9 +558,13 @@ export default function RequestDetailsTab() {
                 <h4 className="font-semibold text-text-main mb-2 text-xs uppercase tracking-wide opacity-70">
                   Content
                 </h4>
-                <pre className="max-h-[300px] max-w-full overflow-auto rounded-lg border border-black/5 bg-black/5 p-3 font-mono text-xs text-text-main dark:border-white/5 dark:bg-white/5 sm:p-4">
-                  {selectedDetail.response?.content || "[No content]"}
-                </pre>
+                {(isRedacted(selectedDetail.response) || isTruncated(selectedDetail.response)) ? (
+                  <PayloadPane payload={selectedDetail.response} maxJsonSizeBytes={maxJsonSizeBytes} />
+                ) : (
+                  <pre className="max-h-[300px] max-w-full overflow-auto rounded-lg border border-black/5 bg-black/5 p-3 font-mono text-xs text-text-main dark:border-white/5 dark:bg-white/5 sm:p-4">
+                    {selectedDetail.response?.content || "[No content]"}
+                  </pre>
+                )}
               </CollapsibleSection>
             </div>
           </div>

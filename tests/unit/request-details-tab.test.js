@@ -252,3 +252,70 @@ describe("API route contract — validation boundary", () => {
     expect(body.pagination).toMatchObject({ page: 1, pageSize: 20 });
   });
 });
+
+describe("API route — payload visibility follows enableObservability", () => {
+  let GET;
+  beforeAll(async () => {
+    ({ GET } = await import("@/app/api/usage/request-details/route.js"));
+  });
+
+  function makeReq(query = "") {
+    return new Request(`http://localhost/api/usage/request-details?${query}`);
+  }
+
+  it("observability on → stored bodies are returned with metadata flags", async () => {
+    await db.updateSettings({ enableObservability: true, observabilityBatchSize: 1, observabilityMaxJsonSize: 64 });
+    await saveDetail({
+      id: "vis-on", provider: "openai", model: "gpt-4", status: "ok",
+      tokens: { prompt_tokens: 1 }, request: { messages: [] }, response: { content: "ok" },
+    });
+
+    const res = await GET(makeReq("page=1&pageSize=100"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.observabilityEnabled).toBe(true);
+    expect(body.maxJsonSizeBytes).toBe(64 * 1024);
+
+    const row = body.details.find((d) => d.id === "vis-on");
+    expect(row).toBeDefined();
+    expect(row.response).toEqual({ content: "ok" });
+    expect(row.request.redacted).toBeUndefined();
+  });
+
+  it("observability off → bodies redacted, metadata still present", async () => {
+    await db.updateSettings({ enableObservability: false });
+
+    const res = await GET(makeReq("page=1&pageSize=100"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.observabilityEnabled).toBe(false);
+
+    // Rows written while it was on are still in the table, but never leak.
+    const row = body.details.find((d) => d.id === "vis-on");
+    expect(row).toBeDefined();
+    expect(row.model).toBe("gpt-4");
+    expect(row.response).toEqual({ redacted: true });
+    expect(row.request).toEqual({ redacted: true });
+  });
+});
+
+describe("normalizeObservabilityMaxJsonSize — body cap bounds", () => {
+  it("clamps into [1 KB, 10 MB] and defaults on junk", async () => {
+    const { normalizeObservabilityMaxJsonSize } = await import("@/lib/db/index.js");
+    expect(normalizeObservabilityMaxJsonSize(64)).toBe(64);
+    expect(normalizeObservabilityMaxJsonSize("64")).toBe(64);
+    expect(normalizeObservabilityMaxJsonSize(0)).toBe(1);
+    expect(normalizeObservabilityMaxJsonSize(-5)).toBe(1);
+    expect(normalizeObservabilityMaxJsonSize(1e9)).toBe(10 * 1024);
+    expect(normalizeObservabilityMaxJsonSize(undefined)).toBe(5);
+    expect(normalizeObservabilityMaxJsonSize("abc")).toBe(5);
+    expect(normalizeObservabilityMaxJsonSize(null)).toBe(5);
+  });
+
+  it("getSettings never returns an out-of-range value", async () => {
+    await db.updateSettings({ observabilityMaxJsonSize: 1e9 });
+    const settings = await db.getSettings();
+    expect(settings.observabilityMaxJsonSize).toBe(10 * 1024);
+    await db.updateSettings({ observabilityMaxJsonSize: 5 });
+  });
+});
