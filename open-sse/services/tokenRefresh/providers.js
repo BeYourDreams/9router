@@ -771,6 +771,20 @@ export async function refreshMiniMaxCodeToken(provider, refreshToken, log) {
 
 // ── Nous Research Portal (hermes-cli) ────────────────────────────────────────
 // Flow: refresh_token → new access_token → mint fresh agent_key.
+//
+// The Portal retired the /api/oauth/agent-key endpoint
+// (`session_key_minting_retired`). The OAuth access_token is itself a valid
+// Bearer credential for inference, so when minting is unavailable we simply use
+// it directly. Once we observe the retirement we stop calling the dead endpoint
+// for the rest of the process lifetime instead of eating a timeout on every
+// refresh, and we log at debug (not warn) because this is the expected state.
+let _nousAgentKeyMintingRetired = false;
+
+const isAgentKeyMintingRetired = (status, body) =>
+  status === 404 ||
+  status === 410 ||
+  /session_key_minting_retired/.test(body || "");
+
 export async function refreshNousToken(refreshToken, log) {
   if (!refreshToken) return null;
   return dedupRefresh("nous", refreshToken, async () => {
@@ -810,32 +824,43 @@ export async function refreshNousToken(refreshToken, log) {
       let agentKeyExpiresAt = null;
       let agentKeyExpiresIn = null;
       try {
-        const agentKeyResponse = await fetch("https://portal.nousresearch.com/api/oauth/agent-key", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            Authorization: `Bearer ${tokenData.access_token}`,
-          },
-          body: JSON.stringify({
-            min_ttl_seconds: 7200,
-          }),
-          signal: AbortSignal.timeout(15000),
-        });
-
-        if (agentKeyResponse.ok) {
-          const agentKeyData = await agentKeyResponse.json();
-          agentKey = agentKeyData.api_key || null;
-          agentKeyId = agentKeyData.key_id || null;
-          agentKeyExpiresIn = agentKeyData.expires_in || null;
-          agentKeyExpiresAt = agentKeyData.expires_at
-            || (agentKeyExpiresIn
-              ? new Date(Date.now() + agentKeyExpiresIn * 1000).toISOString()
-              : null);
-          log?.info?.("TOKEN_REFRESH", "Nous agent key minted successfully");
+        if (_nousAgentKeyMintingRetired) {
+          log?.debug?.("TOKEN_REFRESH", "Nous agent key minting retired upstream; using access_token");
         } else {
-          const error = await agentKeyResponse.text().catch(() => "");
-          log?.warn?.("TOKEN_REFRESH", "Failed to mint Nous agent key, falling back to access_token", { error });
+          const agentKeyResponse = await fetch("https://portal.nousresearch.com/api/oauth/agent-key", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              Authorization: `Bearer ${tokenData.access_token}`,
+            },
+            body: JSON.stringify({
+              min_ttl_seconds: 7200,
+            }),
+            signal: AbortSignal.timeout(15000),
+          });
+
+          if (agentKeyResponse.ok) {
+            const agentKeyData = await agentKeyResponse.json();
+            agentKey = agentKeyData.api_key || null;
+            agentKeyId = agentKeyData.key_id || null;
+            agentKeyExpiresIn = agentKeyData.expires_in || null;
+            agentKeyExpiresAt = agentKeyData.expires_at
+              || (agentKeyExpiresIn
+                ? new Date(Date.now() + agentKeyExpiresIn * 1000).toISOString()
+                : null);
+            log?.info?.("TOKEN_REFRESH", "Nous agent key minted successfully");
+          } else {
+            const error = await agentKeyResponse.text().catch(() => "");
+            if (isAgentKeyMintingRetired(agentKeyResponse.status, error)) {
+              _nousAgentKeyMintingRetired = true;
+              log?.debug?.("TOKEN_REFRESH", "Nous agent key minting retired upstream; using access_token", {
+                status: agentKeyResponse.status,
+              });
+            } else {
+              log?.warn?.("TOKEN_REFRESH", "Failed to mint Nous agent key, falling back to access_token", { error });
+            }
+          }
         }
       } catch (mintErr) {
         log?.warn?.("TOKEN_REFRESH", `Nous agent key mint error: ${mintErr?.message || mintErr}`);
@@ -847,10 +872,14 @@ export async function refreshNousToken(refreshToken, log) {
         expiresIn: tokenData.expires_in,
         apiKey: agentKey || tokenData.access_token,
         agentKey,
+        // Always emit the agent-key fields, using explicit nulls when absent.
+        // providerSpecificData is shallow-merged into the stored connection, so
+        // omitting these would leave a stale agentKeyExpiresAt in the past and
+        // make the connection look permanently expired (refresh loop).
         providerSpecificData: {
-          ...(agentKeyId ? { agentKeyId } : {}),
-          ...(agentKeyExpiresAt ? { agentKeyExpiresAt } : {}),
-          ...(agentKeyExpiresIn ? { agentKeyExpiresIn } : {}),
+          agentKeyId,
+          agentKeyExpiresAt,
+          agentKeyExpiresIn,
         },
       };
     } catch (error) {

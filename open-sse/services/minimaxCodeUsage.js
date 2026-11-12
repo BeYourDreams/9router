@@ -16,7 +16,7 @@ const SIGN_SECRET = "I*7Cf%WZ#S&%1RlZJ&C2";
 // agent.minimaxi.com (plugin SITES table). The global site moved to the same
 // minimaxi.com family — agent.minimax.io only 307s there now — and its signed
 // account API answers there too.
-const SITES = {
+export const SITES = {
   "minimax-code": { agent: "https://agent.minimaxi.com", platform: "https://www.minimaxi.com", lang: "zh" },
   "minimax-code-global": { agent: "https://agent.minimaxi.com", platform: "https://www.minimaxi.com", lang: "en" },
 };
@@ -55,7 +55,7 @@ export function signedAccountRequest(site, path, { access, userID, body, now = D
   return { url: url.toString(), init: { method: json === undefined ? "GET" : "POST", headers, ...(json === undefined ? {} : { body: json }) } };
 }
 
-class AccountRefused extends Error {}
+export class AccountRefused extends Error {}
 
 function checked(env, what) {
   const si = obj(env?.statusInfo);
@@ -70,7 +70,7 @@ function checked(env, what) {
   return env;
 }
 
-async function accountCall(site, path, opts, what) {
+export async function accountCall(site, path, opts, what) {
   const { url, init } = signedAccountRequest(site, path, opts);
   const res = await fetch(url, { ...init, signal: AbortSignal.timeout(15000) });
   if (res.status === 401 || res.status === 403) throw new AccountRefused(`${what}: the sign-in was refused (HTTP ${res.status})`);

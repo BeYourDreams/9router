@@ -113,6 +113,24 @@ async function runHeavyStartup() {
       .catch((e) => console.log("[AutoPing] scheduler start failed:", e.message));
   }
 
+  if (hasMinimaxAutoSigninEnabled(settings)) {
+    import("@/shared/services/minimaxAutoSignin")
+      .then(({ startMiniMaxAutoSignin }) => startMiniMaxAutoSignin())
+      .catch((e) => console.log("[AutoSignin] scheduler start failed:", e.message));
+  }
+
+  if (hasCodeBuddyAutoSigninEnabled(settings)) {
+    import("@/shared/services/codebuddyAutoSignin")
+      .then(({ startCodeBuddyAutoSignin }) => startCodeBuddyAutoSignin())
+      .catch((e) => console.log("[CodeBuddySignin] scheduler start failed:", e.message));
+  }
+
+  if (hasModelScopeAutoSigninEnabled(settings)) {
+    import("@/shared/services/modelscopeAutoSignin")
+      .then(({ startModelScopeAutoSignin }) => startModelScopeAutoSignin())
+      .catch((e) => console.log("[ModelScopeLogin] scheduler start failed:", e.message));
+  }
+
   // Proactive OAuth token refresh (e.g. grok-cli ~6h TTL). Module is idempotent
   // and also started from custom-server.js when that entry is used.
   import("@/sse/services/backgroundTokenRefresh.js")
@@ -127,6 +145,30 @@ function hasQuotaAutoPingEnabled(settings) {
     Object.values(config?.connections || {}).some(Boolean)
     || Object.values(config?.schedules || {}).some((schedule) => schedule?.enabled === true)
   ));
+}
+
+// Cheap local check: keep the daily check-in scheduler unloaded unless at least
+// one MiniMax Code connection opted in. Respects an explicit global off switch.
+function hasMinimaxAutoSigninEnabled(settings) {
+  const cfg = settings?.minimaxAutoSignin;
+  if (!cfg || cfg.enabled === false) return false;
+  return Object.values(cfg.connections || {}).some(Boolean);
+}
+
+// Cheap local check: keep the CodeBuddy daily check-in scheduler unloaded unless
+// at least one CodeBuddy connection opted in. Respects a global off switch.
+function hasCodeBuddyAutoSigninEnabled(settings) {
+  const cfg = settings?.codebuddyAutoSignin;
+  if (!cfg || cfg.enabled === false) return false;
+  return Object.values(cfg.connections || {}).some(Boolean);
+}
+
+// Cheap local check: keep the ModelScope daily auto-login scheduler unloaded
+// unless at least one ModelScope connection opted in. Respects a global off switch.
+function hasModelScopeAutoSigninEnabled(settings) {
+  const cfg = settings?.modelscopeAutoSignin;
+  if (!cfg || cfg.enabled === false) return false;
+  return Object.values(cfg.connections || {}).some(Boolean);
 }
 
 async function autoStartMitm(settings) {

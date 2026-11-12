@@ -1,5 +1,10 @@
 import { NOUS_CONFIG } from "../constants/oauth.js";
 
+const isAgentKeyMintingRetired = (status, body) =>
+  status === 404 ||
+  status === 410 ||
+  /session_key_minting_retired/.test(body || "");
+
 const nous = {
   config: NOUS_CONFIG,
   flowType: "device_code",
@@ -77,7 +82,14 @@ const nous = {
 
       if (!response.ok) {
         const error = await response.text().catch(() => "");
-        console.warn(`[oauth] Nous agent key mint failed (${response.status}): ${error}`);
+        // The Portal retired agent-key minting (session_key_minting_retired).
+        // The access_token is itself a valid inference credential, so this is
+        // an expected steady state rather than a failure worth warning about.
+        if (isAgentKeyMintingRetired(response.status, error)) {
+          console.debug("[oauth] Nous agent key minting retired upstream; using access_token");
+        } else {
+          console.warn(`[oauth] Nous agent key mint failed (${response.status}): ${error}`);
+        }
         return { agentKey: null };
       }
 
@@ -103,13 +115,15 @@ const nous = {
     apiKey: extra?.agentKey || tokens.access_token,
     providerSpecificData: {
       inferenceBaseUrl: NOUS_CONFIG.inferenceBaseUrl,
-      ...(extra?.agentKeyId ? { agentKeyId: extra.agentKeyId } : {}),
-      ...(extra?.agentKeyExpiresAt
-      ? { agentKeyExpiresAt: extra.agentKeyExpiresAt }
-      : extra?.agentKeyExpiresIn
-        ? { agentKeyExpiresAt: new Date(Date.now() + extra.agentKeyExpiresIn * 1000).toISOString() }
-        : {}),
-      ...(extra?.agentKeyExpiresIn ? { agentKeyExpiresIn: extra.agentKeyExpiresIn } : {}),
+      // Emit explicit nulls so a stale agent-key expiry left over from a prior
+      // login cannot survive the shallow merge and pin the connection to an
+      // already-past expiry (which would trigger a refresh on every request).
+      agentKeyId: extra?.agentKeyId || null,
+      agentKeyExpiresAt: extra?.agentKeyExpiresAt
+        || (extra?.agentKeyExpiresIn
+          ? new Date(Date.now() + extra.agentKeyExpiresIn * 1000).toISOString()
+          : null),
+      agentKeyExpiresIn: extra?.agentKeyExpiresIn || null,
     },
   }),
 };

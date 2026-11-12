@@ -164,6 +164,9 @@ export default function ProviderLimits() {
   const [errors, setErrors] = useState({});
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [autoPingConfigs, setAutoPingConfigs] = useState({ claude: {}, codex: {} });
+  const [minimaxSigninCfg, setMinimaxSigninCfg] = useState({});
+  const [codebuddySigninCfg, setCodebuddySigninCfg] = useState({});
+  const [modelscopeSigninCfg, setModelscopeSigninCfg] = useState({});
   const [scheduleConnection, setScheduleConnection] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [hasHydratedAutoRefresh, setHasHydratedAutoRefresh] = useState(false);
@@ -609,6 +612,9 @@ export default function ProviderLimits() {
           claude: s?.claudeAutoPing || {},
           codex: s?.codexAutoPing || {},
         });
+        setMinimaxSigninCfg(s?.minimaxAutoSignin || {});
+        setCodebuddySigninCfg(s?.codebuddyAutoSignin || {});
+        setModelscopeSigninCfg(s?.modelscopeAutoSignin || {});
         setQuotaVisibility(s?.quotaVisibility || {});
       })
       .catch(() => {});
@@ -645,6 +651,57 @@ export default function ProviderLimits() {
       setAutoPingConfigs(previous);
     }
   }, [autoPingConfigs]);
+
+  const toggleMinimaxAutoSignin = useCallback(async (connectionId) => {
+    const previous = minimaxSigninCfg;
+    const connections = { ...(minimaxSigninCfg.connections || {}) };
+    connections[connectionId] = !connections[connectionId];
+    const nextCfg = { ...minimaxSigninCfg, connections };
+    setMinimaxSigninCfg(nextCfg);
+    try {
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ minimaxAutoSignin: nextCfg }),
+      });
+    } catch {
+      setMinimaxSigninCfg(previous);
+    }
+  }, [minimaxSigninCfg]);
+
+  const toggleCodebuddyAutoSignin = useCallback(async (connectionId) => {
+    const previous = codebuddySigninCfg;
+    const connections = { ...(codebuddySigninCfg.connections || {}) };
+    connections[connectionId] = !connections[connectionId];
+    const nextCfg = { ...codebuddySigninCfg, connections };
+    setCodebuddySigninCfg(nextCfg);
+    try {
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codebuddyAutoSignin: nextCfg }),
+      });
+    } catch {
+      setCodebuddySigninCfg(previous);
+    }
+  }, [codebuddySigninCfg]);
+
+  const toggleModelscopeAutoSignin = useCallback(async (connectionId) => {
+    const previous = modelscopeSigninCfg;
+    const connections = { ...(modelscopeSigninCfg.connections || {}) };
+    connections[connectionId] = !connections[connectionId];
+    const nextCfg = { ...modelscopeSigninCfg, connections };
+    setModelscopeSigninCfg(nextCfg);
+    try {
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelscopeAutoSignin: nextCfg }),
+      });
+    } catch {
+      setModelscopeSigninCfg(previous);
+    }
+  }, [modelscopeSigninCfg]);
 
   const updateQuotaVisibility = useCallback(async (nextVisibility, previousVisibility) => {
     setQuotaVisibility(nextVisibility);
@@ -1284,6 +1341,66 @@ export default function ProviderLimits() {
                             className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${isActive ? "text-primary" : "text-text-muted"}`}
                           >
                             <span className="material-symbols-outlined text-[18px]">bolt</span>
+                          </button>
+                        </Tooltip>
+                      );
+                    })()}
+                    {(conn.provider === "minimax-code" || conn.provider === "minimax-code-global")
+                      && (conn.authType === "oauth" || conn.authType === "mcode-lease") && (() => {
+                      const on = minimaxSigninCfg.connections?.[conn.id] === true;
+                      const tooltipText = on
+                        ? "Daily check-in is on. Points are claimed automatically once per day. Click to turn off."
+                        : "Daily check-in (每日签到): auto-claim the daily credit bonus once per day. Click to turn on.";
+                      return (
+                        <Tooltip text={tooltipText}>
+                          <button
+                            type="button"
+                            onClick={() => toggleMinimaxAutoSignin(conn.id)}
+                            aria-label="Toggle MiniMax daily check-in"
+                            aria-pressed={on}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${on ? "text-primary" : "text-text-muted"}`}
+                          >
+                            <span className="material-symbols-outlined text-[18px]">event_available</span>
+                          </button>
+                        </Tooltip>
+                      );
+                    })()}
+                    {(conn.provider === "codebuddy-cn" || conn.provider === "codebuddy-intl")
+                      && (conn.authType === "oauth" || conn.authType === "apikey") && (() => {
+                      const on = codebuddySigninCfg.connections?.[conn.id] === true;
+                      const tooltipText = on
+                        ? "Daily check-in is on. Points are claimed automatically once per day. Click to turn off."
+                        : "Daily check-in (每日签到): auto-claim the daily credit bonus once per day. Click to turn on.";
+                      return (
+                        <Tooltip text={tooltipText}>
+                          <button
+                            type="button"
+                            onClick={() => toggleCodebuddyAutoSignin(conn.id)}
+                            aria-label="Toggle CodeBuddy daily check-in"
+                            aria-pressed={on}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${on ? "text-primary" : "text-text-muted"}`}
+                          >
+                            <span className="material-symbols-outlined text-[18px]">event_available</span>
+                          </button>
+                        </Tooltip>
+                      );
+                    })()}
+                    {conn.provider === "modelscope"
+                      && conn.authType === "apikey" && (() => {
+                      const on = modelscopeSigninCfg.connections?.[conn.id] === true;
+                      const tooltipText = on
+                        ? "Daily auto-login is on. The 魔粒 daily reward is granted automatically once per day. Click to turn off."
+                        : "Daily auto-login (每日自动登录领魔粒): auto-claim the daily 200 (+50 Aliyun-bound) 魔粒 once per day. Click to turn on.";
+                      return (
+                        <Tooltip text={tooltipText}>
+                          <button
+                            type="button"
+                            onClick={() => toggleModelscopeAutoSignin(conn.id)}
+                            aria-label="Toggle ModelScope daily auto-login"
+                            aria-pressed={on}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${on ? "text-primary" : "text-text-muted"}`}
+                          >
+                            <span className="material-symbols-outlined text-[18px]">event_available</span>
                           </button>
                         </Tooltip>
                       );

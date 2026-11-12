@@ -11,6 +11,18 @@
 // 401 {"code":401,"message":"token is required"}. A mmoat_2_… token was then
 // refused outright ("invalid access token") on the new host; a token minted
 // against account.minimaxi.com is accepted. So talk to minimaxi.com directly.
+//
+// DEPRECATED — the international deployment has been consolidated into the
+// China one, so this provider is now a functional duplicate of minimax-code:
+//   • bare agent.minimaxi.com/ answers 302 → agent.minimax.cn/;
+//   • /mavis/api/v1/models?region=en returns a catalog byte-identical to the
+//     region=cn one on agent.minimax.cn (same model_order/whitelist);
+//   • the two OAuth hosts share one device-code store — a device_code minted
+//     at account.minimaxi.com is recognised (answered slow_down, not
+//     expired_token) when polled at account.minimax.cn/oauth2/token.
+// The API paths still answer directly today, so existing connections keep
+// working; this flag is a warning that sign-ins should move to "MiniMax Code"
+// (minimax-code, host agent.minimax.cn) rather than a hard cut-off.
 
 export default {
   id: "minimax-code-global",
@@ -22,6 +34,9 @@ export default {
     color: "#FF4D4F",
     textIcon: "MM",
     website: "https://minimaxi.com",
+    deprecated: true,
+    deprecationNotice:
+      "MiniMax's international site has been merged into the China one: agent.minimaxi.com now redirects to agent.minimax.cn and both serve the same catalog and sign-in backend. This provider is a duplicate of \"MiniMax Code\" — new connections should use that provider instead. Existing connections keep working.",
   },
   category: "oauth",
   authModes: ["oauth"],

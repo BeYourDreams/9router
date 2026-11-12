@@ -283,6 +283,29 @@ describe("Nous Research provider", () => {
       expires_in: 3600,
     }, { agentKey: null });
     expect(fallbackMapped.apiKey).toBe("at_raw");
+    // A failed/retired mint must null out the agent-key fields so a stale
+    // expiry from a previous login cannot survive the shallow merge.
+    expect(fallbackMapped.providerSpecificData.agentKeyExpiresAt).toBeNull();
+    expect(fallbackMapped.providerSpecificData.agentKeyId).toBeNull();
+  });
+
+  it("treats retired agent-key minting as expected state during sign-in", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+
+    global.fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      error: "session_key_minting_retired",
+      error_description: "Hermes Agent session key minting has been retired.",
+    }), { status: 400 }));
+
+    const extra = await nousOAuth.postExchange({ access_token: "at_raw" });
+    expect(extra.agentKey).toBeNull();
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(debugSpy).toHaveBeenCalled();
+
+    const mapped = nousOAuth.mapTokens({ access_token: "at_raw", expires_in: 3600 }, extra);
+    expect(mapped.apiKey).toBe("at_raw");
+    expect(mapped.providerSpecificData.agentKeyExpiresAt).toBeNull();
   });
 
   it("refreshes Nous OAuth token and mints a fresh agent key", async () => {
@@ -310,5 +333,109 @@ describe("Nous Research provider", () => {
         agentKeyExpiresAt: "2026-10-15T02:00:00Z",
       },
     });
+  });
+
+  it("falls back to access_token when agent-key minting is retired and clears stale expiry", async () => {
+    // Isolate the module-level retirement flag so this test observes the
+    // first encounter with the retired endpoint regardless of test order.
+    vi.resetModules();
+    const { refreshNousToken: freshRefresh } = await import(
+      "../../open-sse/services/tokenRefresh/providers.js"
+    );
+
+    const warn = vi.fn();
+    const debug = vi.fn();
+    const log = { info: vi.fn(), warn, debug, error: vi.fn() };
+
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        access_token: "at_retired",
+        refresh_token: "rt_retired",
+        expires_in: 3600,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: "session_key_minting_retired",
+        error_description: "Hermes Agent session key minting has been retired.",
+      }), { status: 400 }));
+
+    const refreshed = await freshRefresh("rt_initial_retired", log);
+
+    // The OAuth access_token is used directly as the inference credential.
+    expect(refreshed.apiKey).toBe("at_retired");
+    expect(refreshed.agentKey).toBeNull();
+    expect(refreshed.accessToken).toBe("at_retired");
+
+    // Retired minting is expected state: no warning, and a debug breadcrumb.
+    expect(warn).not.toHaveBeenCalled();
+    expect(debug).toHaveBeenCalled();
+
+    // Stale agent-key fields are explicitly nulled so a shallow merge into the
+    // stored connection overwrites the poisoned past expiry.
+    expect(refreshed.providerSpecificData).toEqual({
+      agentKeyId: null,
+      agentKeyExpiresAt: null,
+      agentKeyExpiresIn: null,
+    });
+  });
+
+  it("stops calling the retired agent-key endpoint after the first observation", async () => {
+    vi.resetModules();
+    const { refreshNousToken: freshRefresh } = await import(
+      "../../open-sse/services/tokenRefresh/providers.js"
+    );
+
+    const fetchMock = vi.fn()
+      // First refresh: token + retired mint.
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        access_token: "at_1",
+        refresh_token: "rt_1",
+        expires_in: 3600,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: "session_key_minting_retired",
+      }), { status: 400 }))
+      // Second refresh: token only — the mint endpoint must not be hit again.
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        access_token: "at_2",
+        refresh_token: "rt_2",
+        expires_in: 3600,
+      }), { status: 200 }));
+    global.fetch = fetchMock;
+
+    const first = await freshRefresh("rt_initial_a", { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() });
+    expect(first.apiKey).toBe("at_1");
+
+    const second = await freshRefresh("rt_initial_b", { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() });
+    expect(second.apiKey).toBe("at_2");
+
+    // Exactly three fetches: token, retired mint, token. No second mint call.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const mintCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes("/agent-key"));
+    expect(mintCalls).toHaveLength(1);
+  });
+
+  it("still warns when agent-key minting fails for an unrelated reason", async () => {
+    vi.resetModules();
+    const { refreshNousToken: freshRefresh } = await import(
+      "../../open-sse/services/tokenRefresh/providers.js"
+    );
+
+    const warn = vi.fn();
+    const log = { info: vi.fn(), warn, debug: vi.fn(), error: vi.fn() };
+
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        access_token: "at_transient",
+        refresh_token: "rt_transient",
+        expires_in: 3600,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: "server_error",
+      }), { status: 500 }));
+
+    const refreshed = await freshRefresh("rt_initial_transient", log);
+
+    expect(refreshed.apiKey).toBe("at_transient");
+    expect(warn).toHaveBeenCalled();
   });
 });

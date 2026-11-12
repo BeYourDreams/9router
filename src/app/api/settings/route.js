@@ -108,6 +108,33 @@ export async function PATCH(request) {
         .catch((error) => console.warn("[AutoPing] settings update failed:", error.message));
     }
 
+    if (Object.prototype.hasOwnProperty.call(body, "minimaxAutoSignin")) {
+      // Load / unload the daily check-in scheduler to match the new opt-in set.
+      import("@/shared/services/minimaxAutoSignin")
+        .then(({ configureMiniMaxAutoSignin }) => {
+          configureMiniMaxAutoSignin(settings);
+        })
+        .catch((error) => console.warn("[AutoSignin] settings update failed:", error.message));
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, "codebuddyAutoSignin")) {
+      // Load / unload the CodeBuddy daily check-in scheduler to match the opt-in set.
+      import("@/shared/services/codebuddyAutoSignin")
+        .then(({ configureCodeBuddyAutoSignin }) => {
+          configureCodeBuddyAutoSignin(settings);
+        })
+        .catch((error) => console.warn("[CodeBuddySignin] settings update failed:", error.message));
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, "modelscopeAutoSignin")) {
+      // Load / unload the ModelScope daily auto-login scheduler to match the new opt-in set.
+      import("@/shared/services/modelscopeAutoSignin")
+        .then(({ configureModelScopeAutoSignin }) => {
+          configureModelScopeAutoSignin(settings);
+        })
+        .catch((error) => console.warn("[ModelScopeLogin] settings update failed:", error.message));
+    }
+
     const { password, oidcClientSecret, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
     return NextResponse.json(safeSettings, { headers: SETTINGS_RESPONSE_HEADERS });
