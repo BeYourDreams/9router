@@ -185,3 +185,29 @@ describe("stripUnsupportedParams", () => {
     expect(body).toEqual({ max_tokens: 50 });
   });
 });
+
+describe("sensenova max_tokens clamp", () => {
+  it("clamps advertised output ceiling to the endpoint's [1, 65536] range", () => {
+    const body = {
+      max_tokens: 131072,
+      max_completion_tokens: 131072,
+      max_output_tokens: 131072,
+    };
+
+    stripUnsupportedParams("sensenova", "sensenova-6.8-flash-lite", body);
+
+    expect(body).toEqual({
+      max_tokens: 65536,
+      max_completion_tokens: 65536,
+      max_output_tokens: 65536,
+    });
+  });
+
+  it("leaves values inside the range untouched", () => {
+    const body = { max_tokens: 4096 };
+
+    stripUnsupportedParams("sensenova", "sensenova-6.8-flash-lite", body);
+
+    expect(body.max_tokens).toBe(4096);
+  });
+});

@@ -15,6 +15,10 @@ const STRIP_RULES = [
   // Cloudflare Workers AI: content must be plain string, rejects OpenAI content-part array (#1926)
   { provider: "cloudflare-ai", flattenContent: true },
   { provider: "volcengine-ark", match: /glm-5/i, clampToModelMaxOutput: true },
+  // SenseNova (token.sensenova.cn) validates max_tokens against [1, 65536] and
+  // 400s with "field MaxTokens invalid, should be in [1, 65536]". Its models
+  // advertise a larger ceiling, so clamp every token field to the endpoint cap.
+  { provider: "sensenova", maxOutputCap: 65536, clampToModelMaxOutput: true },
   // VolcEngine Ark caps the Kimi family at max_tokens <= 32768, but the model's
   // advertised ceiling is far higher (Kimi-K2.7-Code resolves to maxOutput 262144),
   // so clampToModelMaxOutput alone leaves it uncapped and the request 400s with

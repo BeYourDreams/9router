@@ -217,6 +217,20 @@ export const QODER_STATIC_MODEL_CONFIGS = Object.freeze({
     is_reasoning: true,
     max_input_tokens: 180000,
   }),
+  // The Flash flagship key is advertised in the IDE picker and accepted by the
+  // chat endpoint, but some per-account catalogs publish only the flagship
+  // `qmodel`/`kmodel` rows and omit it, producing
+  // "model_config for \"qfmodel\" not yet known" until the catalog happens to
+  // include it. Supply the same static block the other models get so the key
+  // stays routable regardless of what /model/list returns.
+  qfmodel: Object.freeze({
+    ...QODER_STATIC_MODEL_CONFIG_BASE,
+    key: "qfmodel",
+    display_name: "Qwen3.8-Flash",
+    is_vl: true,
+    is_reasoning: true,
+    max_input_tokens: 200000,
+  }),
 });
 
 /**

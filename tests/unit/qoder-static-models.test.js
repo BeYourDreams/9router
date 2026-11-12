@@ -18,8 +18,8 @@ import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.j
 import qoderRegistry from "../../open-sse/providers/registry/qoder.js";
 
 describe("Qoder static model configs", () => {
-  it("defines both frontier keys", () => {
-    expect(Object.keys(QODER_STATIC_MODEL_CONFIGS).sort()).toEqual(["cmodel", "smodel"]);
+  it("defines both frontier keys plus the flash flagship", () => {
+    expect(Object.keys(QODER_STATIC_MODEL_CONFIGS).sort()).toEqual(["cmodel", "qfmodel", "smodel"]);
   });
 
   it("maps the canonical keys into QODER_MODEL_MAP", () => {
@@ -51,6 +51,19 @@ describe("Qoder static model configs", () => {
     // fabricated config that upstream would silently ignore.
     expect(getQoderStaticModelConfig("dmodel")).toBeNull();
     expect(getQoderStaticModelConfig("not-a-model")).toBeNull();
+  });
+
+  it("covers qfmodel so catalogs that omit it do not 400", () => {
+    // Some per-account catalogs only publish the flagship row; without this
+    // block the executor throws "model_config for \"qfmodel\" not yet known".
+    const cfg = getQoderStaticModelConfig("qfmodel");
+    expect(cfg).toMatchObject({
+      key: "qfmodel",
+      display_name: "Qwen3.8-Flash",
+      format: "openai",
+      source: "system",
+    });
+    expect(cfg.max_input_tokens).toBeGreaterThan(0);
   });
 });
 
