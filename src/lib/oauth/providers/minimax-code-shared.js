@@ -145,5 +145,7 @@ export function createMinimaxCodeProvider(site) {
 // registry transport; only the OAuth hosts matter here.
 export const MINIMAX_CODE_SITES = {
   cn: { account: "https://account.minimax.cn" },
-  global: { account: "https://account.minimax.io" },
+  // The global site moved to minimaxi.com (agent.minimax.io only 307s there
+  // now) and its sign-in moved with it; the mcode-public device flow is the same.
+  global: { account: "https://account.minimaxi.com" },
 };

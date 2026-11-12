@@ -13,10 +13,12 @@ import { getLeaseToken, isLeaseConnection } from "./minimaxCodeLease.js";
 const SIGN_SECRET = "I*7Cf%WZ#S&%1RlZJ&C2";
 
 // CN quirk: the chat host is agent.minimax.cn but the account API lives on
-// agent.minimaxi.com (plugin SITES table).
+// agent.minimaxi.com (plugin SITES table). The global site moved to the same
+// minimaxi.com family — agent.minimax.io only 307s there now — and its signed
+// account API answers there too.
 const SITES = {
   "minimax-code": { agent: "https://agent.minimaxi.com", platform: "https://www.minimaxi.com", lang: "zh" },
-  "minimax-code-global": { agent: "https://agent.minimax.io", platform: "https://platform.minimax.io", lang: "en" },
+  "minimax-code-global": { agent: "https://agent.minimaxi.com", platform: "https://www.minimaxi.com", lang: "en" },
 };
 
 const md5 = (s) => createHash("md5").update(s).digest("hex");

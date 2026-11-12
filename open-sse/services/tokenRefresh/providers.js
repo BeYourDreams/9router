@@ -716,7 +716,9 @@ export async function refreshWindsurfToken(credentials, log) {
 // else (5xx, timeout) returns null and the current access token stays usable.
 const MINIMAX_CODE_SITES = {
   "minimax-code": "https://account.minimax.cn/oauth2/token",
-  "minimax-code-global": "https://account.minimax.io/oauth2/token",
+  // The global site moved to minimaxi.com and account.minimax.io no longer
+  // issues tokens for it (a rotated token came back rejected upstream).
+  "minimax-code-global": "https://account.minimaxi.com/oauth2/token",
 };
 
 export async function refreshMiniMaxCodeToken(provider, refreshToken, log) {

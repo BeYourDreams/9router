@@ -1,7 +1,8 @@
 # Unreleased
 
 ## Fixes
-- **GitHub Copilot**: explain `model_not_available_for_integrator` instead of surfacing the raw upstream 400. The message says the id is not in this account's catalog and points at `GET /v1/models` — the `Copilot-Integration-Id` header was always correct, which is where everyone looked first
+- **MiniMax Code (Global)**: the international site moved from `agent.minimax.io` to `agent.minimaxi.com`. The old host now answers every request with a 307 to the new one, and `fetch` strips `Authorization` on that cross-origin hop, so the upstream saw an anonymous call and rejected it with `401 {"code":401,"message":"token is required"}` — which surfaced as a `503` and read like a dead token. Transport, catalog and usage now address `minimaxi.com` directly, and sign-in moves with it (`account.minimaxi.com` runs the same `mcode-public` device flow). Tokens minted against `account.minimax.io` are not accepted upstream, so existing global connections need a fresh sign-in. The new site's catalog is narrower — `MiniMax-M3.1-Flash` and `MiniMax-M3` — and `MiniMax-M3.1-Flash` is now listed
+- **GitHub Copilot**
 - **Kiro**: send a `KiroIDE-<version>` User-Agent
 
 ## Features

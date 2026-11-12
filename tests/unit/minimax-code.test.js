@@ -44,12 +44,14 @@ describe("minimax-code registry wiring", () => {
     expect(t.headers["X-Mavis-Agent-Id"]).toBe("main");
   });
 
-  it("global site points at agent.minimax.io with its own alias", () => {
+  it("global site points at agent.minimaxi.com with its own alias", () => {
     const t = PROVIDERS["minimax-code-global"];
-    expect(t.baseUrl).toBe("https://agent.minimax.io/mavis/api/v1/llm/v1/messages");
+    // Not agent.minimax.io: that host 307s every request to minimaxi.com, and
+    // fetch strips Authorization on the cross-origin hop → "token is required".
+    expect(t.baseUrl).toBe("https://agent.minimaxi.com/mavis/api/v1/llm/v1/messages");
     expect(t.thinkingFormat).toBe("claude-adaptive");
     expect(PROVIDER_OAUTH["minimax-code"].tokenUrl).toBe("https://account.minimax.cn/oauth2/token");
-    expect(PROVIDER_OAUTH["minimax-code-global"].tokenUrl).toBe("https://account.minimax.io/oauth2/token");
+    expect(PROVIDER_OAUTH["minimax-code-global"].tokenUrl).toBe("https://account.minimaxi.com/oauth2/token");
     expect(PROVIDER_OAUTH["minimax-code"].refreshLeadMs).toBe(10 * 60 * 1000);
   });
 });
@@ -245,14 +247,14 @@ describe("minimax-code refresh handler", () => {
     expect(a).toEqual(b);
   });
 
-  it("global site hits account.minimax.io", async () => {
+  it("global site hits account.minimaxi.com", async () => {
     const calls = [];
     globalThis.fetch = vi.fn(async (url) => {
       calls.push(String(url));
       return new Response(JSON.stringify({ access_token: "a", refresh_token: "r", expires_in: 60 }), { status: 200 });
     });
     await refreshMiniMaxCodeToken("minimax-code-global", "r9");
-    expect(calls[0]).toBe("https://account.minimax.io/oauth2/token");
+    expect(calls[0]).toBe("https://account.minimaxi.com/oauth2/token");
   });
 });
 
