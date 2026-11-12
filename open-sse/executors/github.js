@@ -120,6 +120,23 @@ export class GithubExecutor extends BaseExecutor {
     return !(m.includes("gemini") || m.includes("claude"));
   }
 
+  // Copilot answers an id it does not serve to this account with
+  // "model_not_available_for_integrator", which reads like a header bug but is
+  // just "this model is not in your catalog". The headers are already correct —
+  // say so, or every user goes hunting for Copilot-Integration-Id.
+  parseError(response, bodyText) {
+    if (response.status === HTTP_STATUS.BAD_REQUEST && bodyText?.includes("model_not_available_for_integrator")) {
+      return {
+        status: HTTP_STATUS.BAD_REQUEST,
+        message:
+          "GitHub Copilot does not serve this model to this account (model_not_available_for_integrator). "
+          + "The Copilot-Integration-Id header is already correct — the model id is missing from the account's "
+          + `catalog. Check GET /v1/models for the ids this account can use. Upstream: ${bodyText}`,
+      };
+    }
+    return super.parseError(response, bodyText);
+  }
+
   async execute(options) {
     const { model, log } = options;
 

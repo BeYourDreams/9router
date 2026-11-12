@@ -1,6 +1,7 @@
 # Unreleased
 
 ## Fixes
+- **GitHub Copilot**: explain `model_not_available_for_integrator` instead of surfacing the raw upstream 400. The message says the id is not in this account's catalog and points at `GET /v1/models` — the `Copilot-Integration-Id` header was always correct, which is where everyone looked first
 - **Kiro**: send a `KiroIDE-<version>` User-Agent
 
 ## Features
