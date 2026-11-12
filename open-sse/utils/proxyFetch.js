@@ -202,8 +202,25 @@ const TLS_ECDH_CURVE = process.env.NINEROUTER_TLS_ECDH_CURVE || "X25519";
 // requestTls must stay TLS-options-only (undici 8 rejects connect-level options there
 // with UND_ERR_INVALID_ARG).
 const EYEBALLS_CONNECT = { autoSelectFamily: true, autoSelectFamilyAttemptTimeout: 250 };
-function buildConnectOptions(insecure) {
-  return { ...EYEBALLS_CONNECT, ecdhCurve: TLS_ECDH_CURVE, ...(insecure ? { rejectUnauthorized: false } : {}) };
+function buildConnectOptions(insecure, ecdhCurve = TLS_ECDH_CURVE) {
+  return {
+    ...EYEBALLS_CONNECT,
+    // null = the runtime's default curve list (some edges RST a single-curve
+    // ClientHello — see isHandshakeReset).
+    ...(ecdhCurve ? { ecdhCurve } : {}),
+    ...(insecure ? { rejectUnauthorized: false } : {}),
+  };
+}
+
+// A single curve gets DPI middleboxes through and is refused by other edges:
+// AWS OIDC/Cognito RSTs the handshake ("Client network socket disconnected
+// before secure TLS connection was established") when the ClientHello offers
+// one curve. Distinct from a stale keep-alive socket, which fails after the
+// handshake with "other side closed".
+function isHandshakeReset(error) {
+  const msg = `${error?.cause?.message || error?.message || ""}`.toLowerCase();
+  return msg.includes("before secure tls connection was established")
+    || (error?.cause?.code || error?.code) === "ERR_SSL_WRONG_VERSION_NUMBER";
 }
 
 function evictOldest(cacheMap) {
@@ -212,13 +229,13 @@ function evictOldest(cacheMap) {
   }
 }
 
-async function getOrCreateDirectAgent(key, insecure, keepAliveTimeout, keepAliveMaxTimeout) {
+async function getOrCreateDirectAgent(key, insecure, keepAliveTimeout, keepAliveMaxTimeout, ecdhCurve) {
   const cached = directDispatchers.get(key);
   if (cached) return cached;
   const { Agent } = await import("undici");
   evictOldest(directDispatchers);
   const agent = new Agent({
-    connect: buildConnectOptions(insecure),
+    connect: buildConnectOptions(insecure, ecdhCurve),
     keepAliveTimeout,
     keepAliveMaxTimeout,
   });
@@ -230,11 +247,12 @@ async function getOrCreateDirectAgent(key, insecure, keepAliveTimeout, keepAlive
  * Shared direct dispatcher with capped keep-alive TTL. Prevents undici from
  * reusing idle sockets that upstream edges (NVIDIA NIM, Cloudflare) silently
  * dropped without sending a TCP RST.
+ * `ecdhCurve: null` asks for the runtime default curve list.
  */
-export function getDirectDispatcher(insecure = false) {
+export function getDirectDispatcher(insecure = false, ecdhCurve = TLS_ECDH_CURVE) {
   const { keepAliveTimeout, keepAliveMaxTimeout } = resolveKeepAliveTimeouts();
-  const key = `direct::${insecure ? "insecure" : "secure"}::${keepAliveTimeout}::${keepAliveMaxTimeout}`;
-  return getOrCreateDirectAgent(key, insecure, keepAliveTimeout, keepAliveMaxTimeout);
+  const key = `direct::${insecure ? "insecure" : "secure"}::${keepAliveTimeout}::${keepAliveMaxTimeout}::${ecdhCurve || "default"}`;
+  return getOrCreateDirectAgent(key, insecure, keepAliveTimeout, keepAliveMaxTimeout, ecdhCurve);
 }
 
 /**
@@ -303,6 +321,21 @@ async function fetchWithTlsFallback(url, options, proxyUrl, forceFreshSocket = f
       return await rawFetch(url, { ...options, dispatcher: insecureDispatcher });
     }
 
+    // Curve fallback: TLS_ECDH_CURVE buys passage through some DPI middleboxes and
+    // is itself refused by other edges (AWS OIDC RSTs a single-curve ClientHello).
+    // Must run before the stale-socket branch — that one replays on the same curve.
+    if (
+      !proxyUrl
+      && !forceFreshSocket
+      && !options.directFetch
+      && !options.signal?.aborted
+      && isBodyReplaySafe(options.body)
+      && isHandshakeReset(err)
+    ) {
+      dbg("FETCH", `TLS handshake reset on curve ${TLS_ECDH_CURVE}, retrying with default curves: ${url}`);
+      return await rawFetch(url, { ...options, dispatcher: await getDirectDispatcher(false, null) });
+    }
+
     // Stale keep-alive recovery: a pooled socket died before returning headers. Replay
     // once on the fresh-socket dispatcher instead of waiting out the connect timeout.
     if (
@@ -317,6 +350,7 @@ async function fetchWithTlsFallback(url, options, proxyUrl, forceFreshSocket = f
       dbg("FETCH", `stale keep-alive socket (${err.cause?.code || err.code || err.message}), retrying on fresh socket: ${url}`);
       return await fetchWithTlsFallback(url, options, proxyUrl, true);
     }
+
     throw err;
   }
 }

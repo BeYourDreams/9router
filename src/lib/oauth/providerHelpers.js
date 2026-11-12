@@ -1,3 +1,5 @@
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+
 const BASE64_BLOCK_SIZE = 4;
 
 function validateXaiOAuthEndpoint(rawUrl, field) {
@@ -53,7 +55,9 @@ function extractEmailFromAccessToken(accessToken) {
 export async function fetchKiroProfileArn(accessToken) {
   if (!accessToken) return null;
   try {
-    const response = await fetch("https://codewhisperer.us-east-1.amazonaws.com/ListAvailableProfiles", {
+    // codewhisperer.* is DPI-RST-prone too; silent null here means a connection
+    // with no profileArn, which later fails inference with a bare 400.
+    const response = await proxyAwareFetch("https://codewhisperer.us-east-1.amazonaws.com/ListAvailableProfiles", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

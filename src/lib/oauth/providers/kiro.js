@@ -1,5 +1,10 @@
 import { KIRO_CONFIG, assertValidAwsRegion } from "../constants/oauth.js";
 import { extractEmailFromAccessToken } from "../providerHelpers.js";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+
+// Same DPI/TLS-ClientHello reason as services/kiro.js: the device-code calls to
+// oidc.<region>.amazonaws.com fail with ECONNRESET on plain fetch.
+const fetch = proxyAwareFetch;
 
 const kiro = {
   config: KIRO_CONFIG,

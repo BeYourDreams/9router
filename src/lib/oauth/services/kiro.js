@@ -1,4 +1,11 @@
 import { KIRO_CONFIG, assertValidAwsRegion } from "../constants/oauth.js";
+import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+
+// oidc.*.amazonaws.com / *.kiro.dev RST Node's default TLS ClientHello on
+// DPI-shaped networks (ECONNRESET before the handshake) — the "fetch failed"
+// behind a failing Connect Kiro. proxyAwareFetch goes out on the single-curve
+// undici Agent (and honors HTTPS_PROXY) that gets through.
+const fetch = proxyAwareFetch;
 
 /**
  * Kiro OAuth Service
