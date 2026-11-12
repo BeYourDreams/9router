@@ -994,7 +994,7 @@ export default function ProviderLimits() {
   const isCustomPageSize = !ACCOUNT_PAGE_SIZE_OPTIONS.includes(pageSize);
   const pageSizeLabel = getPageSizeLabel(pageSize, isCustomPageSize);
 
-  if (!connectionsLoading && !hasEligibleConnections) {
+  if (!connectionsLoading && !totals.eligibleConnections) {
     return (
       <Card padding="lg">
         <div className="text-center py-12">

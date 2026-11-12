@@ -12,7 +12,8 @@
 // Every number is env-overridable — these are defaults, not a ceiling you can
 // only raise by editing this file:
 //   NINEROUTER_BUILD_HEAP_MB   per-process V8 heap cap (default: auto, see below)
-//   NINEROUTER_BUILD_JOBS      parallelism/worker cap (default: auto, see below)
+//   NINEROUTER_BUILD_JOBS      parallelism/worker cap (default: cores-1, so the
+//                              build always leaves one physical core free)
 //   NINEROUTER_BUILD_MEM=0     lift everything (raw `next build` behaviour)
 //
 // `node <next-cli>` (scripts/spawn.mjs) instead of `npx next` for the same
@@ -29,8 +30,10 @@ import { copyStandaloneAssets } from "./copy-standalone-assets.mjs";
 const HEAP_CAP_MB = 8192; // more only delays the OOM, it doesn't prevent it
 const HEAP_FLOOR_MB = 2048; // below this the build thrashes instead of finishing
 // Memory is the failure mode (an OOM kill loses the build); CPU is only a
-// preference, so workers are NOT cut by default — set NINEROUTER_BUILD_JOBS to
-// free up cores while a build runs.
+// preference. By default the build keeps ONE physical core free (jobs =
+// coreCount - 1) so the resident server / dev server / browser keep a core to
+// run on; set NINEROUTER_BUILD_JOBS to override or to "0" semantics via
+// NINEROUTER_BUILD_MEM=0 to lift every cap.
 
 /** Caps for the build child env, or null when disabled. Pure — unit-tested. */
 export function buildLimits(env = process.env, memoryBytes = totalmem(), coreCount = cpus().length) {
@@ -41,7 +44,12 @@ export function buildLimits(env = process.env, memoryBytes = totalmem(), coreCou
   const heapMb = Number.isFinite(heapFromEnv) && heapFromEnv > 0
     ? heapFromEnv
     : Math.max(HEAP_FLOOR_MB, Math.min(HEAP_CAP_MB, Math.floor(memoryBytes / 1024 / 1024 * 0.4)));
-  const jobs = Number.isFinite(jobsFromEnv) && jobsFromEnv > 0 ? jobsFromEnv : coreCount;
+  // Keep one physical core free for the rest of the machine unless the caller
+  // pins jobs explicitly. coreCount here is logical (cpus().length); on HT
+  // boxes that is already >= physical, so subtracting one still leaves a core.
+  const jobs = Number.isFinite(jobsFromEnv) && jobsFromEnv > 0
+    ? jobsFromEnv
+    : Math.max(1, coreCount - 1);
   return { heapMb, jobs };
 }
 

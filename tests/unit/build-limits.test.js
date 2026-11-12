@@ -7,10 +7,14 @@ const env = (o = {}) => ({ ...o });
 const GB = 1024 ** 3;
 
 describe("buildLimits", () => {
-  it("caps heap but leaves cores alone by default (memory is the failure mode)", () => {
+  it("caps heap and keeps one core free by default (memory is the failure mode)", () => {
     const { heapMb, jobs } = buildLimits(env(), 16 * GB, 8);
     expect(heapMb).toBe(6553);          // ~40% of 16GB
-    expect(jobs).toBe(8);               // unthrottled unless NINEROUTER_BUILD_JOBS says otherwise
+    expect(jobs).toBe(7);               // cores-1: always leave one physical core free
+  });
+
+  it("never drops below one job even on a single-core box", () => {
+    expect(buildLimits(env(), 16 * GB, 1).jobs).toBe(1);
   });
 
   it("never exceeds 8GB of heap no matter how much RAM the box has", () => {
@@ -33,6 +37,6 @@ describe("buildLimits", () => {
   it("ignores garbage env values instead of setting --max-old-space-size=NaN", () => {
     const l = buildLimits(env({ NINEROUTER_BUILD_HEAP_MB: "abc", NINEROUTER_BUILD_JOBS: "0" }), 16 * GB, 8);
     expect(Number.isFinite(l.heapMb)).toBe(true);
-    expect(l.jobs).toBe(8);
+    expect(l.jobs).toBe(7);
   });
 });
