@@ -1,5 +1,8 @@
 # Unreleased
 
+## Fixes
+- **Kiro**: send a `KiroIDE-<version>` User-Agent
+
 ## Features
 - **Web providers**: give the browser-login (webCookie) providers working tool calling. The web UIs have no function-calling channel, so the model answers a tool request as plain text; previously that text was streamed through verbatim with `finish_reason: "stop"`, so agent clients (Claude Code, Cursor, Cline, …) printed the call instead of running it and the turn ended. A single bridge now injects the `<tool>{…}</tool>` contract into the prompt on the request side and promotes the parsed envelope into real `tool_calls` + `finish_reason: "tool_calls"` on the response side — streaming, aggregated-SSE and non-streaming JSON alike (`open-sse/utils/webToolBridge.js`, `open-sse/utils/webToolPolicy.js`, wired once in `chatCore`). Covers `chatglm-web`, `doubao-web`, `xinghuo-web`, `yiyan-web`, `yuanbao-web`, `ling-web`, `qwen-web`, `xiaomimimo-web`, `intern-web`, `muse-web`, `perplexity-web`, `uc-web` and `veoaifree-web`; `chatgpt-web`, `deepseek-web`, `gemini-web` and `grok-web` keep their dedicated tool pipelines. Assistant prose before a tool block still streams token by token — only the envelope is buffered, and a marker that never resolves is released as ordinary text.
 

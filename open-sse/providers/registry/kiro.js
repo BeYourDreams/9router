@@ -1,6 +1,7 @@
+import { KIRO_CLIENT_HEADERS } from "../../config/kiroClient.js";
+
 export default {
   id: "kiro",
-  priority: 10,
   alias: "kr",
   uiAlias: "kr",
   display: {
@@ -29,8 +30,7 @@ export default {
     headers: {
       "Content-Type": "application/json",
       Accept: "application/vnd.amazon.eventstream",
-      "User-Agent": "AWS-SDK-JS/3.0.0 kiro-ide/1.0.0",
-      "X-Amz-User-Agent": "aws-sdk-js/3.0.0 kiro-ide/1.0.0",
+      ...KIRO_CLIENT_HEADERS,
     },
     tokenUrl: "https://prod.us-east-1.auth.desktop.kiro.dev/refreshToken",
     authUrl: "https://prod.us-east-1.auth.desktop.kiro.dev",

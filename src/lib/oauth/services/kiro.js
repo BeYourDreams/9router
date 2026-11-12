@@ -1,5 +1,6 @@
 import { KIRO_CONFIG, assertValidAwsRegion } from "../constants/oauth.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import { KIRO_CLIENT_HEADERS } from "open-sse/config/kiroClient.js";
 
 // oidc.*.amazonaws.com / *.kiro.dev RST Node's default TLS ClientHello on
 // DPI-shaped networks (ECONNRESET before the handshake) — the "fetch failed"
@@ -313,8 +314,7 @@ export class KiroService {
         "Authorization": `Bearer ${apiKey}`,
         "TokenType": "API_KEY",
         "Accept": "application/json",
-        "User-Agent": "AWS-SDK-JS/3.0.0 kiro-ide/1.0.0",
-        "X-Amz-User-Agent": "aws-sdk-js/3.0.0 kiro-ide/1.0.0",
+        ...KIRO_CLIENT_HEADERS,
       },
     });
 
