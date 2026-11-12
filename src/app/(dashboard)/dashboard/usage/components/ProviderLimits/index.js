@@ -23,6 +23,8 @@ import {
   getSafePagination,
   getSafeTotals,
   shouldResetPage,
+  getAutoSigninSummary,
+  isAutoSigninEligible,
   getPaginationPageValue,
   getProviderOptions,
   reconcileConnectionsPage,
@@ -44,6 +46,7 @@ import { ConfirmModal, EditConnectionModal } from "@/shared/components";
 import AutoPingScheduleModal from "@/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal";
 import { getScheduleSlotLabels } from "@/shared/services/quotaPingSchedule";
 import { USAGE_SUPPORTED_PROVIDERS, AI_PROVIDERS } from "@/shared/constants/providers";
+import { getAutoSigninConfigForProvider } from "@/shared/constants/config";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 
 // Maps the stored providerSpecificData.authMethod to a human label for Kiro.
@@ -167,6 +170,10 @@ export default function ProviderLimits() {
   const [minimaxSigninCfg, setMinimaxSigninCfg] = useState({});
   const [codebuddySigninCfg, setCodebuddySigninCfg] = useState({});
   const [modelscopeSigninCfg, setModelscopeSigninCfg] = useState({});
+  const [signinSettings, setSigninSettings] = useState({});
+  // Server-computed roll-up for the master switch; null until first read.
+  const [autoSigninState, setAutoSigninState] = useState(null);
+  const [signinAllBusy, setSigninAllBusy] = useState(false);
   const [scheduleConnection, setScheduleConnection] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [hasHydratedAutoRefresh, setHasHydratedAutoRefresh] = useState(false);
@@ -615,9 +622,33 @@ export default function ProviderLimits() {
         setMinimaxSigninCfg(s?.minimaxAutoSignin || {});
         setCodebuddySigninCfg(s?.codebuddyAutoSignin || {});
         setModelscopeSigninCfg(s?.modelscopeAutoSignin || {});
+        setSigninSettings({
+          minimaxAutoSignin: s?.minimaxAutoSignin || {},
+          codebuddyAutoSignin: s?.codebuddyAutoSignin || {},
+          modelscopeAutoSignin: s?.modelscopeAutoSignin || {},
+        });
         setQuotaVisibility(s?.quotaVisibility || {});
       })
       .catch(() => {});
+    // Server-side roll-up (whole account table, not just this page) so the
+    // master switch shows the true on/off state even with many accounts.
+    fetch("/api/settings/auto-signin", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((summary) => {
+        if (summary && typeof summary.total === "number") setAutoSigninState(summary);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Re-read the server-side master-switch roll-up after any per-card toggle, so
+  // the header state never drifts from what is actually stored.
+  const refreshAutoSigninState = useCallback(async () => {
+    try {
+      const r = await fetch("/api/settings/auto-signin", { cache: "no-store" });
+      if (!r.ok) return;
+      const summary = await r.json();
+      if (summary && typeof summary.total === "number") setAutoSigninState(summary);
+    } catch { /* non-fatal: the switch keeps its last known state */ }
   }, []);
 
   const handleSaveAutoPing = useCallback(async (connectionId, provider, { reactive, schedule }) => {
@@ -658,16 +689,19 @@ export default function ProviderLimits() {
     connections[connectionId] = !connections[connectionId];
     const nextCfg = { ...minimaxSigninCfg, connections };
     setMinimaxSigninCfg(nextCfg);
+    setSigninSettings((prev) => ({ ...prev, minimaxAutoSignin: nextCfg }));
     try {
-      await fetch("/api/settings", {
+      const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ minimaxAutoSignin: nextCfg }),
       });
+      if (res.ok) refreshAutoSigninState();
     } catch {
       setMinimaxSigninCfg(previous);
+      setSigninSettings((prev) => ({ ...prev, minimaxAutoSignin: previous }));
     }
-  }, [minimaxSigninCfg]);
+  }, [minimaxSigninCfg, refreshAutoSigninState]);
 
   const toggleCodebuddyAutoSignin = useCallback(async (connectionId) => {
     const previous = codebuddySigninCfg;
@@ -675,16 +709,19 @@ export default function ProviderLimits() {
     connections[connectionId] = !connections[connectionId];
     const nextCfg = { ...codebuddySigninCfg, connections };
     setCodebuddySigninCfg(nextCfg);
+    setSigninSettings((prev) => ({ ...prev, codebuddyAutoSignin: nextCfg }));
     try {
-      await fetch("/api/settings", {
+      const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ codebuddyAutoSignin: nextCfg }),
       });
+      if (res.ok) refreshAutoSigninState();
     } catch {
       setCodebuddySigninCfg(previous);
+      setSigninSettings((prev) => ({ ...prev, codebuddyAutoSignin: previous }));
     }
-  }, [codebuddySigninCfg]);
+  }, [codebuddySigninCfg, refreshAutoSigninState]);
 
   const toggleModelscopeAutoSignin = useCallback(async (connectionId) => {
     const previous = modelscopeSigninCfg;
@@ -692,16 +729,59 @@ export default function ProviderLimits() {
     connections[connectionId] = !connections[connectionId];
     const nextCfg = { ...modelscopeSigninCfg, connections };
     setModelscopeSigninCfg(nextCfg);
+    setSigninSettings((prev) => ({ ...prev, modelscopeAutoSignin: nextCfg }));
     try {
-      await fetch("/api/settings", {
+      const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ modelscopeAutoSignin: nextCfg }),
       });
+      if (res.ok) refreshAutoSigninState();
     } catch {
       setModelscopeSigninCfg(previous);
+      setSigninSettings((prev) => ({ ...prev, modelscopeAutoSignin: previous }));
     }
-  }, [modelscopeSigninCfg]);
+  }, [modelscopeSigninCfg, refreshAutoSigninState]);
+
+  // Master switch: turn daily check-in on (or off) for every eligible connection
+  // of every family. The fan-out happens server-side (PUT /api/settings/auto-signin)
+  // because this page only holds one paginated slice of the account list — doing
+  // it here would silently skip every account beyond the visible page.
+  //
+  // State lives in settings (SQLite) via that endpoint, not in localStorage, so
+  // the switch means the same thing in every browser and after a reinstall.
+  const toggleAllAutoSignin = useCallback(async () => {
+    setSigninAllBusy(true);
+    const previous = signinSettings;
+    try {
+      const res = await fetch("/api/settings/auto-signin", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ on: !autoSigninSummary.on }),
+      });
+      if (!res.ok) throw new Error("Failed to update auto check-in");
+      const summary = await res.json();
+      setAutoSigninState(summary);
+
+      // Re-read settings so the per-card toggles reflect what the server stored.
+      const sRes = await fetch("/api/settings", { cache: "no-store" });
+      if (sRes.ok) {
+        const s = await sRes.json();
+        setMinimaxSigninCfg(s?.minimaxAutoSignin || {});
+        setCodebuddySigninCfg(s?.codebuddyAutoSignin || {});
+        setModelscopeSigninCfg(s?.modelscopeAutoSignin || {});
+        setSigninSettings({
+          minimaxAutoSignin: s?.minimaxAutoSignin || {},
+          codebuddyAutoSignin: s?.codebuddyAutoSignin || {},
+          modelscopeAutoSignin: s?.modelscopeAutoSignin || {},
+        });
+      }
+    } catch {
+      setSigninSettings(previous);
+    } finally {
+      setSigninAllBusy(false);
+    }
+  }, [autoSigninSummary.on, signinSettings]);
 
   const updateQuotaVisibility = useCallback(async (nextVisibility, previousVisibility) => {
     setQuotaVisibility(nextVisibility);
@@ -898,7 +978,12 @@ export default function ProviderLimits() {
 
   const selectedProviderLabel =
     providerFilter === "all" ? "All providers" : providerLabel(providerFilter);
-  const hasEligibleConnections = totals.eligibleConnections > 0;
+  // Master switch state. The server roll-up covers every account; the local
+  // one only sees this page, so it is the fallback (e.g. before the fetch lands,
+  // or when the account list was just changes on this page).
+  const localSigninSummary = getAutoSigninSummary(connections, signinSettings);
+  const autoSigninSummary = autoSigninState ?? localSigninSummary;
+
   const hasVisibleConnections = sortedConnections.length > 0;
   const emptyState = getConnectionsEmptyMessage(
     totals,
@@ -1082,6 +1167,40 @@ export default function ProviderLimits() {
                 </option>
               ))}
             </select>
+          )}
+
+          {/* Master: daily check-in (自动签到) for every eligible account */}
+          {autoSigninSummary.total > 0 && (
+            <button
+              type="button"
+              onClick={toggleAllAutoSignin}
+              disabled={signinAllBusy}
+              aria-pressed={autoSigninSummary.on}
+              className={`flex h-8 shrink-0 items-center gap-1 rounded-lg border px-2 text-xs transition-colors disabled:opacity-50 ${
+                autoSigninSummary.on
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-500"
+                  : autoSigninSummary.partial
+                    ? "border-amber-500/40 bg-amber-500/10 text-amber-500"
+                    : "border-black/10 text-text-primary hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/5"
+              }`}
+              title={
+                autoSigninSummary.on
+                  ? `Daily check-in is on for all ${autoSigninSummary.total} eligible account(s). Click to turn it off everywhere.`
+                  : `Daily check-in (每日签到) auto-claims the daily reward once per day. ${autoSigninSummary.optedIn}/${autoSigninSummary.total} account(s) on. Click to turn it on for all.`
+              }
+            >
+              <span
+                className={`material-symbols-outlined text-[14px] ${signinAllBusy ? "animate-spin" : ""}`}
+              >
+                {signinAllBusy ? "progress_activity" : autoSigninSummary.on ? "event_available" : "event_busy"}
+              </span>
+              <span className="hidden sm:inline">Auto check-in</span>
+              {autoSigninSummary.partial && (
+                <span className="text-[10px] tabular-nums">
+                  ({autoSigninSummary.optedIn}/{autoSigninSummary.total})
+                </span>
+              )}
+            </button>
           )}
 
           <button
@@ -1345,9 +1464,9 @@ export default function ProviderLimits() {
                         </Tooltip>
                       );
                     })()}
-                    {(conn.provider === "minimax-code" || conn.provider === "minimax-code-global")
-                      && (conn.authType === "oauth" || conn.authType === "mcode-lease") && (() => {
-                      const on = minimaxSigninCfg.connections?.[conn.id] === true;
+                    {(getAutoSigninConfigForProvider(conn.provider)?.settingsKey === "minimaxAutoSignin")
+                      && isAutoSigninEligible(conn) && (() => {
+                      const on = signinSettings.minimaxAutoSignin?.connections?.[conn.id] === true;
                       const tooltipText = on
                         ? "Daily check-in is on. Points are claimed automatically once per day. Click to turn off."
                         : "Daily check-in (每日签到): auto-claim the daily credit bonus once per day. Click to turn on.";
@@ -1365,9 +1484,9 @@ export default function ProviderLimits() {
                         </Tooltip>
                       );
                     })()}
-                    {(conn.provider === "codebuddy-cn" || conn.provider === "codebuddy-intl")
-                      && (conn.authType === "oauth" || conn.authType === "apikey") && (() => {
-                      const on = codebuddySigninCfg.connections?.[conn.id] === true;
+                    {(getAutoSigninConfigForProvider(conn.provider)?.settingsKey === "codebuddyAutoSignin")
+                      && isAutoSigninEligible(conn) && (() => {
+                      const on = signinSettings.codebuddyAutoSignin?.connections?.[conn.id] === true;
                       const tooltipText = on
                         ? "Daily check-in is on. Points are claimed automatically once per day. Click to turn off."
                         : "Daily check-in (每日签到): auto-claim the daily credit bonus once per day. Click to turn on.";
@@ -1385,9 +1504,9 @@ export default function ProviderLimits() {
                         </Tooltip>
                       );
                     })()}
-                    {conn.provider === "modelscope"
-                      && conn.authType === "apikey" && (() => {
-                      const on = modelscopeSigninCfg.connections?.[conn.id] === true;
+                    {(getAutoSigninConfigForProvider(conn.provider)?.settingsKey === "modelscopeAutoSignin")
+                      && isAutoSigninEligible(conn) && (() => {
+                      const on = signinSettings.modelscopeAutoSignin?.connections?.[conn.id] === true;
                       const tooltipText = on
                         ? "Daily auto-login is on. The 魔粒 daily reward is granted automatically once per day. Click to turn off."
                         : "Daily auto-login (每日自动登录领魔粒): auto-claim the daily 200 (+50 Aliyun-bound) 魔粒 once per day. Click to turn on.";

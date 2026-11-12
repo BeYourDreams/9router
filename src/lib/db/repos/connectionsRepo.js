@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { getSettings, updateSettings } from "./settingsRepo.js";
+import { optInNewConnection } from "@/shared/services/autoSigninDefaults.js";
 
 const OPTIONAL_FIELDS = [
   "displayName", "email", "globalPriority", "defaultModel",
@@ -136,6 +138,7 @@ export async function createProviderConnection(data) {
   const db = await getAdapter();
   const now = new Date().toISOString();
   let result;
+  let isNew = false;
 
   db.transaction(() => {
     // apikey connections are deduped by name and need only the current max
@@ -254,7 +257,17 @@ export async function createProviderConnection(data) {
     // which made a 5k-key import O(n*m): ~25M statements at a 5k pool, and it
     // serialized every parallel writer on the same transaction. #4311
     result = conn;
+    isNew = true;
   });
+
+  // Daily check-in is on for newly added accounts. Done after the insert
+  // transaction closes: settings writes open their own transaction, and
+  // nesting them would deadlock. Only the create path sets isNew — an existing
+  // row took the early `return` above — so re-authorizing an account never
+  // resurrects a check-in the user turned off.
+  if (isNew && result) {
+    await optInNewConnection(result, { getSettings, updateSettings });
+  }
 
   return result;
 }

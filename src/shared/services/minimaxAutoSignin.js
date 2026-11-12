@@ -60,8 +60,10 @@ export async function checkinConnection(conn, deps, nowMs = Date.now()) {
   const today = localDayKey(nowMs);
 
   // Done for today (claimed now, or already claimed upstream) -> nothing to do.
-  // A "not claimable yet" pass records done:false so the next tick retries.
-  if (conn.minimaxLastSigninDate === today && conn.minimaxLastSigninDone === true) {
+  // Once the day is touched at all we stop polling too: a second claim attempt
+  // the same day only earns "already claimed", and the day gate already keeps
+  // an off→on toggle from re-claiming. A fresh day has a different date key.
+  if (conn.minimaxLastSigninDate === today) {
     return { skipped: "already-claimed-today" };
   }
 

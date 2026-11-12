@@ -69,8 +69,9 @@ function proxyOptionsFor(cfg) {
 export async function loginConnection(conn, deps, nowMs = Date.now()) {
   const today = localDayKey(nowMs);
 
-  // Done for today -> nothing to do.
-  if (conn.modelscopeLastLoginDate === today && conn.modelscopeLastLoginDone === true) {
+  // Done for today -> nothing to do. The date key is enough: any login the
+  // same day is a no-op upstream, and a fresh day carries a different key.
+  if (conn.modelscopeLastLoginDate === today) {
     return { skipped: "already-logged-in-today" };
   }
 

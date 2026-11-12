@@ -113,6 +113,16 @@ async function runHeavyStartup() {
       .catch((e) => console.log("[AutoPing] scheduler start failed:", e.message));
   }
 
+  // Opt pre-existing accounts into daily check-in when they have no explicit
+  // entry yet (the "on by default" policy). Idempotent, best-effort.
+  import("@/shared/services/autoSigninDefaults")
+    .then(({ backfillDefaultOptIns }) => backfillDefaultOptIns({
+      getSettings: () => import("@/lib/localDb").then((m) => m.getSettings()),
+      getProviderConnections: () => import("@/lib/localDb").then((m) => m.getProviderConnections()),
+      updateSettings: (patch) => import("@/lib/localDb").then((m) => m.updateSettings(patch)),
+    }))
+    .catch((e) => console.log("[AutoSignin] default backfill skipped:", e.message));
+
   if (hasMinimaxAutoSigninEnabled(settings)) {
     import("@/shared/services/minimaxAutoSignin")
       .then(({ startMiniMaxAutoSignin }) => startMiniMaxAutoSignin())

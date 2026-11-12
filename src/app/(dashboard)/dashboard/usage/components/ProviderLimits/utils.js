@@ -1,4 +1,8 @@
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
+import {
+  getAutoSigninConfigForProvider,
+  isAutoSigninEligibleConnection,
+} from "@/shared/constants/config";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 export const QUOTA_CACHE_KEY = "quotaCacheData";
@@ -925,4 +929,37 @@ export function parseQuotaData(provider, data) {
   }
 
   return normalizedQuotas;
+}
+
+// ─── Daily check-in (自动签到) ─────────────────────────────────────────────────
+// One master switch drives the per-connection opt-ins of every check-in family
+// (MiniMax Code, CodeBuddy, ModelScope). A connection counts as "eligible" when
+// its auth type can actually claim (see AUTO_SIGNIN_AUTH_TYPES) and it is turned
+// on; "on" means every eligible connection is opted in, "off" means none is.
+
+/** True when this connection can claim a daily check-in reward at all. */
+export const isAutoSigninEligible = isAutoSigninEligibleConnection;
+
+/**
+ * Roll every eligible connection(s) up into one switch state.
+ *   total   — eligible connections seen across all families
+ *   optedIn — how many of them are opted in
+ *   on      — true only when every eligible connection is opted in
+ *   partial — some, but not all, opted in
+ */
+export function getAutoSigninSummary(connections, settings) {
+  const summary = { total: 0, optedIn: 0, on: false, partial: false };
+  for (const conn of connections || []) {
+    if (!isAutoSigninEligible(conn)) continue;
+    const cfg = getAutoSigninConfigForProvider(conn.provider);
+    const providerCfg = settings?.[cfg.settingsKey] || {};
+    const enabledGlobally = providerCfg.enabled !== false;
+    summary.total += 1;
+    if (enabledGlobally && providerCfg.connections?.[conn.id] === true) {
+      summary.optedIn += 1;
+    }
+  }
+  summary.on = summary.total > 0 && summary.optedIn === summary.total;
+  summary.partial = summary.optedIn > 0 && !summary.on;
+  return summary;
 }

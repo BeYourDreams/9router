@@ -108,6 +108,54 @@ export const MODELSCOPE_AUTOSIGNIN_CONFIG = {
   failureCooldownMs: 30 * 60 * 1000,     // do not hammer after a failed login
   providers: ["modelscope"],
 };
+
+// The daily check-in family, in the order the dashboard lists it. Every entry
+// shares the scheduler shape above: an hourly tick, a per-connection opt-in map
+// at settings[settingsKey].connections, and `enabled: false` as a global off
+// switch. The "Auto check-in" master toggle on the quota page flips every
+// eligible connection of every entry at once.
+export const AUTO_SIGNIN_CONFIGS = [
+  MINIMAX_AUTOSIGNIN_CONFIG,
+  CODEBUDDY_AUTOSIGNIN_CONFIG,
+  MODELSCOPE_AUTOSIGNIN_CONFIG,
+];
+
+// Which auth types can actually be checked in, per provider. MiniMax Code
+// connections are OAuth, or "mcode-lease" when they mirror a local `mcode`
+// login; CodeBuddy reuses its bearer for OAuth *and* API-key accounts; ModelScope
+// is API-key only.
+export const AUTO_SIGNIN_AUTH_TYPES = {
+  "minimax-code": ["oauth", "mcode-lease"],
+  "minimax-code-global": ["oauth", "mcode-lease"],
+  "codebuddy-cn": ["oauth", "apikey"],
+  "codebuddy-intl": ["oauth", "apikey"],
+  modelscope: ["apikey"],
+};
+
+// Daily check-in is ON for newly added accounts: a fresh MiniMax Code /
+// CodeBuddy / ModelScope connection is opted in at creation time, so the user
+// never has to remember to flip a per-account toggle. An explicit `false`
+// written by the user (single toggle, or the master switch) always wins and is
+// never overwritten — only the *absence* of an entry falls back to this default.
+export const AUTO_SIGNIN_DEFAULT_ENABLED = true;
+
+/**
+ * True when a connection is something the daily check-in can actually claim for:
+ * a check-in provider, a supported auth type, and not switched off. Shared by the
+ * dashboard and by the bulk endpoint so both agree on "eligible".
+ */
+export function isAutoSigninEligibleConnection(conn) {
+  if (!conn?.provider) return false;
+  if (conn.isActive === false) return false;
+  const authTypes = AUTO_SIGNIN_AUTH_TYPES[conn.provider];
+  if (!authTypes) return false;
+  return authTypes.includes(conn.authType);
+}
+
+/** The check-in family whose opt-in map owns this provider, or null. */
+export function getAutoSigninConfigForProvider(provider) {
+  return AUTO_SIGNIN_CONFIGS.find((c) => c.providers.includes(provider)) || null;
+}
 // Quota auto-ping: keep 5h windows warm by sending a tiny request right after reset.
 export const QUOTA_AUTOPING_CONFIG = {
   tickIntervalMs: 60000,                // scheduler tick
