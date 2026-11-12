@@ -47,4 +47,8 @@ export default {
     { id: "stepfun-ai/Step-3.7-Flash", name: "Step 3.7 Flash" },
   ],
   passthroughModels: true,
+  features: {
+    usage: true,
+    usageApikey: true,
+  },
 };

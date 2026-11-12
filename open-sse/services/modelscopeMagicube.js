@@ -50,8 +50,17 @@ export function resolveToken(connection) {
   return connection?.apiKey || connection?.accessToken || null;
 }
 
-async function callMagicube(token, path, proxyOptions) {
-  const response = await proxyAwareFetch(`${MAGICUBE_BASE}${path}`, {
+// A connection may point the Magicube surface elsewhere
+// (providerSpecificData.magicubeBaseUrl) — private deployment or a local mock.
+function magicubeBase(connection) {
+  const override = connection?.providerSpecificData?.magicubeBaseUrl;
+  return typeof override === "string" && override.trim()
+    ? `${override.trim().replace(/\/+$/, "")}/openapi`
+    : MAGICUBE_BASE;
+}
+
+async function callMagicube(token, path, proxyOptions, base = MAGICUBE_BASE) {
+  const response = await proxyAwareFetch(`${base}${path}`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -134,9 +143,10 @@ export async function runModelScopeDailyLogin(connection, proxyOptions = null) {
   if (!token) return { ok: false, error: "no ModelScope access token on this connection" };
 
   try {
+    const base = magicubeBase(connection);
     const [balanceBody, rulesBody] = await Promise.all([
-      callMagicube(token, BALANCE_PATH, proxyOptions),
-      callMagicube(token, EARN_RULES_PATH, proxyOptions),
+      callMagicube(token, BALANCE_PATH, proxyOptions, base),
+      callMagicube(token, EARN_RULES_PATH, proxyOptions, base),
     ]);
 
     const balance = parseBalance(balanceBody);
@@ -156,5 +166,125 @@ export async function runModelScopeDailyLogin(connection, proxyOptions = null) {
       return { ok: false, authExpired: e.authExpired === true, error: e.message };
     }
     return { ok: false, error: e?.message ?? String(e) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Usage lane (Provider Limits) — the dashboard's quota rows for a ModelScope
+// connection.
+//
+//   "魔粒"  remaining / available (frozen held back) → percentage row
+//   "今日魔粒" today's earned vs. today's cap          → percentage row
+//   "魔粒余额" the raw balance                         → credit-balance row
+//
+// earn/rules carries the daily caps so "今日魔粒" reads 0% before the login
+// lands and 100% after it; the rules whose payout is *not* the daily login
+// (e.g. 验证邮箱) are counted too, so the row is "how much of everything
+// claimable today did I claim". A frozen amount (200 魔粒) reads as used in the
+// 魔粒 row: the bar is what is actually spendable.
+
+/** Percent left, 0-100, rounded. */
+function percentLeft(remaining, total) {
+  if (!(total > 0)) return 0;
+  return Math.round(Math.max(0, Math.min(100, (remaining / total) * 100)));
+}
+
+/**
+ * Shape one connection's usage answer from the two Magicube reads.
+ * Returns { quotas, plan, user, message? } in the dashboard's parseQuotaData
+ * contract. Both bodies may be null (endpoint answered nothing useful).
+ */
+export function buildModelScopeUsage({ balance, rules, earnedToday, balanceCents } = {}) {
+  const quotas = {};
+
+  if (balance) {
+    const spendable = balance.available;
+    const pct = percentLeft(spendable, balance.total);
+    quotas["魔粒"] = {
+      used: Math.max(0, balance.total - spendable),
+      total: balance.total,
+      remaining: pct,
+      remainingPercentage: pct,
+      unit: "魔粒",
+      resetAt: null,
+    };
+  }
+
+  const daily = Array.isArray(rules?.dailyRules) ? rules.dailyRules : [];
+  const todayCap = daily.reduce((sum, r) => sum + (r.dailyCap > 0 ? r.amount : 0), 0);
+  const todayDone = daily.reduce(
+    (sum, r) => sum + (r.dailyCap > 0 ? Math.min(r.todayUsed, r.dailyCap) * r.amount : 0),
+    0,
+  );
+  const todaySpend = earnedToday ?? rules?.todayEarned ?? 0;
+  if (todayCap > 0) {
+    const left = todayCap - todayDone;
+    quotas["今日魔粒"] = {
+      used: todayDone,
+      total: todayCap,
+      remaining: percentLeft(left, todayCap),
+      remainingPercentage: percentLeft(left, todayCap),
+      unit: "魔粒",
+      // "今日" resets at local midnight; leave the date to the dashboard, which
+      // shows a countdown only when it has one. Kept null on purpose so the row
+      // never claims a reset instant the server did not report.
+      resetAt: null,
+      // Uncredited remainder means the login for today has not landed yet.
+      ...(todayDone < todayCap ? { message: `未领取 ${left} 魔粒 — 每日登录后自动到账` } : {}),
+    };
+    if (todaySpend !== todayDone) {
+      quotas["今日魔粒"].used = todaySpend > todayDone ? todaySpend : todayDone;
+    }
+  }
+
+  if (balance) {
+    quotas["魔粒余额"] = {
+      used: 0,
+      total: balance.available,
+      isCreditBalance: true,
+      currency: "魔粒",
+      unit: "魔粒",
+    };
+  }
+
+  if (Object.keys(quotas).length === 0) {
+    return { message: "ModelScope returned no Magicube data for this account" };
+  }
+
+  return {
+    quotas,
+    plan: daily.some((r) => r.key === "aliyun_bindlogin") ? "魔搭 · 已绑定阿里云" : "魔搭 · 免费",
+    ...(balance ? { user: `余额 ${balance.total} 魔粒` } : {}),
+    ...(balanceCents ? { message: balanceCents } : {}),
+  };
+}
+
+/**
+ * Usage handler (USAGE_HANDLERS shape) for a ModelScope apikey connection.
+ * The "login" is the authenticated read, so this also keeps the daily streak
+ * alive when the dashboard opens — same idempotent call the scheduler makes.
+ */
+export async function getModelScopeUsage(connection, proxyOptions = null) {
+  const token = resolveToken(connection);
+  if (!token) return { message: "ModelScope: no access token on this connection" };
+
+  try {
+    const base = magicubeBase(connection);
+    const [balanceBody, rulesBody] = await Promise.all([
+      callMagicube(token, BALANCE_PATH, proxyOptions, base),
+      callMagicube(token, EARN_RULES_PATH, proxyOptions, base),
+    ]);
+    const balance = parseBalance(balanceBody);
+    const rules = parseEarnRules(rulesBody);
+    const conn = connection || {};
+    const earnedToday = typeof conn.modelscopeLastLoginEarnedToday === "number"
+      ? conn.modelscopeLastLoginEarnedToday
+      : undefined;
+    return buildModelScopeUsage({ balance, rules, earnedToday });
+  } catch (e) {
+    if (e instanceof MagicubeRefused) {
+      return { message: e.authExpired ? `ModelScope unauthorized — check the access token (${e.message})` : e.message };
+    }
+    return { message: `ModelScope: ${e?.message ?? String(e)}` };
   }
 }

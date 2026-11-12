@@ -826,6 +826,27 @@ export function parseQuotaData(provider, data) {
         }
         break;
 
+      case "modelscope":
+        // ModelScope 魔搭 — 魔粒 rows. "魔粒" and "今日魔粒" are percent rows
+        // (remaining is a 0-100 percentage); "魔粒余额" is a credit balance,
+        // whose absolute total must NOT leak into `remaining`.
+        if (data.quotas) {
+          Object.entries(data.quotas).forEach(([name, quota]) => {
+            normalizedQuotas.push({
+              name,
+              used: quota.used || 0,
+              total: quota.total || 0,
+              resetAt: quota.resetAt || null,
+              remainingPercentage: quota.remainingPercentage,
+              isCreditBalance: quota.isCreditBalance === true,
+              currency: quota.currency,
+              unit: quota.unit,
+              emptyMessage: quota.message || null,
+            });
+          });
+        }
+        break;
+
       case "minimax-code":
       case "minimax-code-global":
         // Service already returns dashboard-shaped rows: a credits balance
