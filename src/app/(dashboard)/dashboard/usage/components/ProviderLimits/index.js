@@ -745,6 +745,11 @@ export default function ProviderLimits() {
 
   // Master switch: turn daily check-in on (or off) for every eligible connection
   // of every family. The fan-out happens server-side (PUT /api/settings/auto-signin)
+  // NOTE: these must be declared before toggleAllAutoSignin — its useCallback dep
+  // array reads autoSigninSummary.on, and a const referenced before its declaration
+  // throws "Cannot access before initialization" (TDZ) on the client.
+  const localSigninSummary = getAutoSigninSummary(connections, signinSettings);
+  const autoSigninSummary = autoSigninState ?? localSigninSummary;
   // because this page only holds one paginated slice of the account list — doing
   // it here would silently skip every account beyond the visible page.
   //
@@ -978,12 +983,6 @@ export default function ProviderLimits() {
 
   const selectedProviderLabel =
     providerFilter === "all" ? "All providers" : providerLabel(providerFilter);
-  // Master switch state. The server roll-up covers every account; the local
-  // one only sees this page, so it is the fallback (e.g. before the fetch lands,
-  // or when the account list was just changes on this page).
-  const localSigninSummary = getAutoSigninSummary(connections, signinSettings);
-  const autoSigninSummary = autoSigninState ?? localSigninSummary;
-
   const hasVisibleConnections = sortedConnections.length > 0;
   const emptyState = getConnectionsEmptyMessage(
     totals,

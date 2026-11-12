@@ -1,6 +1,15 @@
 ## Development / verification workflow (required)
 
 1. **Never stop or build over the instance on 20128. Use `--sandbox`.**
+
+   > ⛔ **HARD RULE (user-mandated): ABSOLUTELY FORBIDDEN to kill, taskkill, or
+   > terminate any process listening on port 20128.** This includes `taskkill /PID`,
+   > `kill`, `Stop-Process`, or any signal (SIGTERM/SIGKILL) targeting the 9Router
+   > production instance. The 20128 server is a long-lived production instance; it is
+   > never to be stopped by an agent or a script. If the code needs to be rebuilt or
+   > the instance restarted, do so ONLY via the sanctioned paths below, never by
+   > killing the port owner.
+
    A long-lived production instance occupies **20128** and `.next/standalone` is its own
    working directory (`next build` does `rmdir` on it). Verify everything in a separate
    directory instead — every wrapper understands `--sandbox`:
@@ -17,7 +26,15 @@
    Confirm the log says `Ready` on `http://localhost:20127` before probing it. Never
    `taskkill` a process on 20128 and never delete `.next`.
 
-   Keep `.next-sandbox` — do not delete it. Turbopack's build cache lives in
+   If the 20128 instance must be brought back up (e.g. after a machine reboot or an
+   authorized deploy), start it with the wrapper — **never by killing first**:
+   `node scripts/start-server.mjs --port 20128` (production) or, for a verified
+   preview of a change, the `--sandbox` variants on a different port. Port 20128 is
+   reserved exclusively for the long-lived production instance; a sandbox run may
+   never bind it (`--port` is required with `--sandbox` and both wrappers refuse to
+   bind 20128 when running sandboxed).
+
+   Keep `.next-sandbox` — do not delete it.
    `<distDir>/cache/turbopack`, and `next.config.mjs` sets `cleanDistDir: false` so the
    cache survives between builds: a warm sandbox build is ~35-55s (compile ~2s).
    Deleting the dist dir makes the next build ~115s — 30s to recreate the tree, 25s cold compile
