@@ -17,6 +17,7 @@ import {
   claimMossCheckin,
   readMossBalance,
   buildMossUsage,
+  resolveToken,
 } from "../../open-sse/services/mossaiSignin.js";
 import {
   localDayKey,
@@ -173,9 +174,37 @@ describe("MossAI auto check-in scheduler", () => {
     expect(claim).not.toHaveBeenCalled();
   });
 
+  it("skips a connection that only carries a sk- model key (no web token)", async () => {
+    const claim = vi.fn();
+    const d = deps({ claim });
+    const skConn = { id: "c2", provider: "mossai", authType: "apikey", apiKey: "sk-MBp0pqx" };
+    const r = await checkinConnection(skConn, d, Date.now());
+    expect(r).toEqual({ skipped: "no-web-token" });
+    expect(claim).not.toHaveBeenCalled();
+  });
+
   it("summarizes a tick across opted-in connections", async () => {
     const d = deps();
     const summary = await runMossAutoSigninTick(d, { running: false }, Date.now());
     expect(summary).toMatchObject({ checked: 1, claimed: 1, reward: 0.5, errors: 0 });
+  });
+});
+
+// A connection carries two different credentials: the developer sk- key in
+// apiKey (model calls) and the web access token (check-in). Only the latter may
+// ever be sent as X-Access-Token.
+describe("resolveToken — web access token vs developer sk- key", () => {
+  it("prefers accessToken over the sk- apiKey", () => {
+    expect(resolveToken({ apiKey: "sk-abc", accessToken: "web-token" })).toBe("web-token");
+    expect(resolveToken({ apiKey: "sk-abc", providerSpecificData: { accessToken: "web-token" } })).toBe("web-token");
+  });
+
+  it("never sends a developer sk- key as the web token", () => {
+    expect(resolveToken({ apiKey: "sk-MBp0pqx" })).toBeNull();
+    expect(resolveToken({})).toBeNull();
+  });
+
+  it("keeps the legacy layout where apiKey holds the web token", () => {
+    expect(resolveToken({ apiKey: "eyJhbGciOi.web" })).toBe("eyJhbGciOi.web");
   });
 });

@@ -13,20 +13,22 @@ export default {
     website: "https://mossai.cc",
     notice: {
       apiKeyUrl: "https://mossai.cc/",
-      text: "MossAI 一站式 AI 模型平台。网页账号登录后即可每日签到领取算力；填入网页 access token（localStorage accessToken）用于签到与余额展示，开发者 sk- API Key 用于模型调用。",
+      text: "MossAI 一站式 AI 模型平台。apiKey 填开发者 sk- API Key（模型调用，走 /api/open-platform/v1）；网页 access token（localStorage accessToken）存在连接的 accessToken 字段，用于每日签到与算力余额。",
     },
   },
   category: "freeTier",
   authType: "apikey",
-  // 签到/余额用网页 access token（X-Access-Token），模型调用用 Bearer sk-key。
-  // apiKey 字段承载网页 access token（签到/余额/调用共用，若调用失败用户可在
-  // providerSpecificData.skKey 填开发者 sk- key）。
+  // 两条凭证互不相同：
+  //   apiKey      = 开发者 sk- key → 模型调用（Bearer）。模型网关只认 /api/open-platform/v1
+  //                 （https://mossai.cc/v1 对这些 key 直接 401，已实测）。
+  //   accessToken = 网页 access token → 签到/余额（X-Access-Token）。
+  // 连接列表里 sk- key 是主凭证，所以 apiKey 归它；网页 token 由 resolveToken 单独取。
   hasProviderSpecificData: true,
   transport: {
-    baseUrl: "https://mossai.cc/v1/chat/completions",
-    validateUrl: "https://mossai.cc/v1/models",
-    // 目录公开带价目（GET /v1/models 需要有效 key），用 openai 过滤器拉取。
-    modelsFetcher: { url: "https://mossai.cc/v1/models", type: "openai" },
+    baseUrl: "https://mossai.cc/api/open-platform/v1/chat/completions",
+    validateUrl: "https://mossai.cc/api/open-platform/v1/models",
+    // 目录公开带价目（GET …/models 需要有效 sk- key），用 openai 过滤器拉取。
+    modelsFetcher: { url: "https://mossai.cc/api/open-platform/v1/models", type: "openai" },
   },
   serviceKinds: ["llm"],
   models: [

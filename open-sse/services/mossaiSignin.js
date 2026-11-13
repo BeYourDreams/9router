@@ -13,8 +13,8 @@
 // scheduler's per-day gate dedupes the round-trips.
 //
 // The model-call lane uses the developer API key (`sk-…`, Authorization: Bearer)
-// at /v1/chat/completions; that key lives in providerSpecificData.skKey and is
-// NOT the same credential as the web access token. Nothing here logs an account
+// at /api/open-platform/v1/chat/completions; that key is the connection's apiKey
+// and is NOT the same credential as the web access token (see resolveToken).
 // out: a refused/expired token comes back as { ok:false, authExpired:true } so
 // the scheduler backs off instead of destroying the credential.
 
@@ -36,9 +36,20 @@ class MossRefused extends Error {
   }
 }
 
-/** The web access token — the credential stored as the connection's apiKey. */
+/**
+ * The web access token used for check-in/balance (X-Access-Token).
+ *
+ * A connection's apiKey is normally the developer sk- key (model calls), which
+ * this endpoint rejects; the web token therefore lives in accessToken (or
+ * providerSpecificData.accessToken). apiKey is still read as a fallback so the
+ * older "one apiKey holds everything" layout keeps working — but an sk- key is
+ * never sent here, it would only earn a 401.
+ */
 export function resolveToken(connection) {
-  return connection?.apiKey || connection?.accessToken || null;
+  const explicit = connection?.accessToken || connection?.providerSpecificData?.accessToken;
+  if (explicit) return explicit;
+  const apiKey = connection?.apiKey;
+  return apiKey && !String(apiKey).startsWith("sk-") ? apiKey : null;
 }
 
 function isAuthError(body) {

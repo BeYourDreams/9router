@@ -18,7 +18,7 @@ import "open-sse/index.js";
 import { getSettings, getProviderConnections, updateProviderConnection } from "@/lib/localDb";
 import { refreshAndUpdateCredentials } from "@/app/api/usage/[connectionId]/route.js";
 import { MOSSAI_AUTOSIGNIN_CONFIG } from "@/shared/constants/config";
-import { claimMossCheckin, readMossBalance } from "open-sse/services/mossaiSignin.js";
+import { claimMossCheckin, readMossBalance, resolveToken } from "open-sse/services/mossaiSignin.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 
 const C = MOSSAI_AUTOSIGNIN_CONFIG;
@@ -75,6 +75,10 @@ export async function checkinConnection(conn, deps, nowMs = Date.now()) {
   if (conn.mossaiLastSigninDate === today && conn.mossaiLastSigninDone) {
     return { skipped: "already-claimed-today" };
   }
+
+  // No web access token on this connection (e.g. it only carries a sk- model
+  // key): nothing to claim — skip quietly instead of warning every tick.
+  if (!resolveToken(conn)) return { skipped: "no-web-token" };
 
   const key = `${conn.provider}:${conn.id}`;
   if (shouldSkipAfterFailure(key, nowMs)) return { skipped: "failure-cooldown" };
