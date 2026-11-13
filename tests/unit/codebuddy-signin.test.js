@@ -1,6 +1,11 @@
-// CodeBuddy daily check-in — panel parsing, claim idempotency, the check-in
-// orchestration against a mocked upstream, and the per-day scheduler gate that
-// keeps a claim from firing twice in one local day.
+// CodeBuddy daily check-in — panel parsing from the live checkin-activity-status
+// payload, claim idempotency against the billing gateway, the check-in
+// orchestration, and the per-day scheduler gate that keeps a claim from firing
+// twice in one local day.
+//
+// Fixture shapes are captured from the real gateway (POST
+// /v2/billing/meter/checkin-activity-status), including the 10001 business code
+// the claim endpoint answers with once today is spent.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Route proxyAwareFetch through the test's global fetch so no network is hit.
@@ -20,53 +25,69 @@ import {
   runCodeBuddyAutoSigninTick,
 } from "../../src/shared/services/codebuddyAutoSignin.js";
 
-const PANEL_UNCLAIMED = {
-  code: 0,
+const STATUS_OPEN = {
+  code: 0, msg: "OK",
   data: {
-    days: [
-      { day_no: 1, points: 100, status: 1, is_today: true },
-      { day_no: 2, points: 100, status: 1, is_today: false },
-      { day_no: 4, points: 300, status: 1, is_today: false },
-    ],
+    active: true, today_checked_in: false, streak_days: 0, daily_credit: 100,
+    today_credit: 100, is_streak_day: false, checkin_dates: [], total_credits: 0,
+    activity_name: "签到活动",
   },
 };
 
-const PANEL_CLAIMED = {
-  code: 0,
+const STATUS_DONE = {
+  code: 0, msg: "OK",
   data: {
-    days: [
-      { day_no: 1, points: 100, status: 3, is_today: true },
-      { day_no: 2, points: 100, status: 1, is_today: false },
-    ],
+    active: true, today_checked_in: true, streak_days: 1, daily_credit: 100,
+    today_credit: 100, is_streak_day: false, checkin_dates: ["2026-11-13"],
+    total_credits: 100, activity_name: "签到活动",
   },
 };
+
+const STATUS_INACTIVE = {
+  code: 0, msg: "OK",
+  data: { active: false, today_checked_in: false, streak_days: 0, daily_credit: 100, today_credit: 100 },
+};
+
+const CLAIM_OK = {
+  code: 0, msg: "OK", data: { credit: 100, streak_days: 1, is_streak_day: false },
+};
+
+const CLAIM_ALREADY = { code: 10001, msg: "今天已签到，请明天再来" };
+const CLAIM_INACTIVE = { code: 10001, msg: "签到活动未开启或已过期" };
 
 describe("codebuddy sign-in panel parsing", () => {
-  it("reads today's claimable slot and future points", () => {
-    const p = parseSigninPanel(PANEL_UNCLAIMED);
+  it("reads an open activity as claimable with today's credit", () => {
+    const p = parseSigninPanel(STATUS_OPEN);
     expect(p).not.toBeNull();
+    expect(p.active).toBe(true);
     expect(p.claimableToday).toBe(true);
     expect(p.claimedToday).toBe(false);
     expect(p.todayPoints).toBe(100);
-    expect(p.days.map((d) => d.dayNo)).toEqual([1, 2, 4]);
   });
 
-  it("marks a claimed day (status 3) as claimed, not claimable", () => {
-    const p = parseSigninPanel(PANEL_CLAIMED);
+  it("reads a spent day as claimed and not claimable", () => {
+    const p = parseSigninPanel(STATUS_DONE);
     expect(p.claimedToday).toBe(true);
     expect(p.claimableToday).toBe(false);
+    expect(p.streakDays).toBe(1);
   });
 
-  it("honors an explicit claimed flag without a day list", () => {
-    const p = parseSigninPanel({ code: 0, data: { claimed: true, points: 100 } });
+  it("reports a missing-checkin_dates reply as claimed without a day list", () => {
+    const p = parseSigninPanel({ code: 0, data: { active: true, today_checked_in: true, today_credit: 100 } });
     expect(p.claimedToday).toBe(true);
     expect(p.claimableToday).toBe(false);
     expect(p.todayPoints).toBe(100);
+  });
+
+  it("treats an inactive activity as not claimable", () => {
+    const p = parseSigninPanel(STATUS_INACTIVE);
+    expect(p.active).toBe(false);
+    expect(p.claimableToday).toBe(false);
   });
 
   it("returns null when no panel-like payload is present", () => {
     expect(parseSigninPanel({ code: 0 })).toBeNull();
-    expect(parseSigninPanel({ data: { days: [] } })).toBeNull();
+    expect(parseSigninPanel({ code: 0, data: {} })).toBeNull();
   });
 });
 
@@ -74,32 +95,30 @@ describe("codebuddy sign-in calls (mocked upstream)", () => {
   const originalFetch = globalThis.fetch;
   afterEach(() => { globalThis.fetch = originalFetch; vi.restoreAllMocks(); });
 
-  const site = { base: "https://copilot.tencent.com", domain: "copilot.tencent.com", providerId: "codebuddy-cn", token: "tok" };
+  const site = { providerId: "codebuddy-cn", token: "tok" };
   const conn = { provider: "codebuddy-cn", accessToken: "tok" };
 
-  it("GETs the status endpoint and sends the plugin headers", async () => {
+  it("POSTs the activity status endpoint with the bearer headers", async () => {
     let url = "", method = "", headers = {};
     globalThis.fetch = vi.fn(async (u, init) => {
       url = String(u); method = init.method; headers = init.headers;
-      return new Response(JSON.stringify(PANEL_UNCLAIMED), { status: 200 });
+      return new Response(JSON.stringify(STATUS_OPEN), { status: 200 });
     });
     const p = await getSigninStatus(site);
-    expect(url).toContain("/v2/activity/signin");
-    expect(method).toBe("GET");
+    expect(url).toContain("/v2/billing/meter/checkin-activity-status");
+    expect(method).toBe("POST");
     expect(headers.Authorization).toBe("Bearer tok");
-    expect(headers["X-Domain"]).toBe("copilot.tencent.com");
-    expect(headers["x-codebuddy-request"]).toBe("1");
     expect(p.claimableToday).toBe(true);
   });
 
-  it("claims when today is claimable (+points)", async () => {
+  it("claims when today is open (+credit)", async () => {
     let claimMethod = "";
     globalThis.fetch = vi.fn(async (u, init) => {
-      if (init.method === "POST") {
-        claimMethod = "POST";
-        return new Response(JSON.stringify({ code: 0, data: { claimed: true, points: 100 } }), { status: 200 });
+      if (String(u).includes("daily-checkin")) {
+        claimMethod = init.method;
+        return new Response(JSON.stringify(CLAIM_OK), { status: 200 });
       }
-      return new Response(JSON.stringify(PANEL_UNCLAIMED), { status: 200 });
+      return new Response(JSON.stringify(STATUS_OPEN), { status: 200 });
     });
     const r = await runCodeBuddySignin(conn);
     expect(claimMethod).toBe("POST");
@@ -112,26 +131,37 @@ describe("codebuddy sign-in calls (mocked upstream)", () => {
     let posts = 0;
     globalThis.fetch = vi.fn(async (u, init) => {
       if (init.method === "POST") posts += 1;
-      return new Response(JSON.stringify(PANEL_CLAIMED), { status: 200 });
+      return new Response(JSON.stringify(STATUS_DONE), { status: 200 });
     });
     const r = await runCodeBuddySignin(conn);
-    expect(posts).toBe(0);
+    expect(posts).toBe(1); // only the status read
     expect(r.ok).toBe(true);
     expect(r.claimed).toBe(false);
     expect(r.alreadyClaimed).toBe(true);
   });
 
-  it("treats an explicit already_claimed reply as a no-op", async () => {
-    globalThis.fetch = vi.fn(async (u, init) => {
-      if (init.method === "POST") {
-        return new Response(JSON.stringify({ code: 0, data: { already_claimed: true, points: 100 } }), { status: 200 });
-      }
-      return new Response(JSON.stringify(PANEL_UNCLAIMED), { status: 200 });
+  it("treats a 10001 claim reply as already claimed (idempotent)", async () => {
+    globalThis.fetch = vi.fn(async (u) => {
+      if (String(u).includes("daily-checkin")) return new Response(JSON.stringify(CLAIM_ALREADY), { status: 200 });
+      return new Response(JSON.stringify(STATUS_OPEN), { status: 200 });
     });
     const r = await runCodeBuddySignin(conn);
+    expect(r.ok).toBe(true);
     expect(r.claimed).toBe(false);
     expect(r.alreadyClaimed).toBe(true);
     expect(r.points).toBe(0);
+  });
+
+  it("skips an inactive activity without claiming", async () => {
+    let claims = 0;
+    globalThis.fetch = vi.fn(async (u) => {
+      if (String(u).includes("daily-checkin")) claims += 1;
+      return new Response(JSON.stringify(STATUS_INACTIVE), { status: 200 });
+    });
+    const r = await runCodeBuddySignin(conn);
+    expect(claims).toBe(0);
+    expect(r.ok).toBe(true);
+    expect(r.claimed).toBe(false);
   });
 
   it("reports a refused token as authExpired (no throw)", async () => {
@@ -182,6 +212,17 @@ describe("codebuddy daily gate + scheduler", () => {
     expect(d.signin).not.toHaveBeenCalled();
   });
 
+  it("retries a day that recorded a date but nothing claimed", async () => {
+    const d = deps();
+    const r = await checkinConnection(
+      { id: "x", provider: "codebuddy-cn", codebuddyLastSigninDate: localDayKey(now), codebuddyLastSigninDone: false },
+      d, now,
+    );
+    expect(r.skipped).toBeUndefined();
+    expect(d.signin).toHaveBeenCalledTimes(1);
+    expect(r.claimed).toBe(true);
+  });
+
   it("claims, updates the day gate, and accumulates points", async () => {
     const d = deps({ signin: vi.fn(async () => ({ ok: true, claimed: true, points: 100 })) });
     const conn = { id: "c1", provider: "codebuddy-cn", codebuddyLastSigninTotalPoints: 50 };
@@ -220,9 +261,8 @@ describe("codebuddy daily gate + scheduler", () => {
           : []
       ),
     });
-    const summary = await runCodeBuddyAutoSigninTick(d, { running: false, failureCache: {} }, now);
-    expect(summary.checked).toBe(1);
-    expect(summary.claimed).toBe(1);
-    expect(summary.points).toBe(100);
+    const r = await runCodeBuddyAutoSigninTick(d, { running: false }, now);
+    expect(d.signin).toHaveBeenCalledTimes(1);
+    expect(r.claimed).toBe(1);
   });
 });

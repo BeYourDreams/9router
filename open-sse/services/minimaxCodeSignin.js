@@ -13,7 +13,8 @@
 //
 // Day status codes (observed from the live endpoint):
 //   1 = not yet claimed (claimable if is_today)
-//   2 = today but not yet claimable (rare — e.g. before the local rollover settles)
+//   2 = today, unclaimed — the live panel serves 2 (not 1) for the current day,
+//       and the claim still grants (claim_result 1, the day then flips to 3)
 //   3 = claimed
 // claim_result: 1 = fresh claim, 2 = already claimed today (idempotent — the
 // server re-returns the panel and grants nothing twice).
@@ -34,7 +35,9 @@ const str = (o, k) => (typeof o?.[k] === "string" && o[k].trim() ? o[k].trim() :
 
 // Status codes as parsed from `days[].status`.
 const DAY_CLAIMED = 3;
-const DAY_CLAIMABLE = 1;
+// Both 1 and 2 mean "not claimed yet": observed live, today's slot reports 2 and
+// the claim still succeeds, so gating on 1 alone silently skipped every check-in.
+const DAY_UNCLAIMED = new Set([1, 2]);
 
 /**
  * Normalize the sign-in panel (from status or claim) into a stable shape:
@@ -64,7 +67,7 @@ export function parseSigninPanel(body) {
 
   const today = days.find((d) => d.isToday);
   const claimedToday = today ? today.status === DAY_CLAIMED : false;
-  const claimableToday = today ? today.status === DAY_CLAIMABLE && !claimedToday : false;
+  const claimableToday = today ? DAY_UNCLAIMED.has(today.status) && !claimedToday : false;
   return {
     scene: num(panel?.scene) ?? SIGNIN_SCENE,
     claimedToday,

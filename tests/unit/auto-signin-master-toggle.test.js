@@ -109,12 +109,10 @@ describe("a day is claimed at most once, even after toggling off and on", () => 
     updateConnection: vi.fn(async () => ({})),
   });
 
-  it("MiniMax: a touched day is not re-polled", async () => {
+it("MiniMax: a sealed day is not re-polled", async () => {
     const signin = vi.fn();
-    // A pass that did not seal the day (upstream said "not claimable yet") still
-    // stamps the date — that must be enough to stop the hourly tick from polling.
     const r = await checkinMinimax(
-      { id: "x", provider: "minimax-code", minimaxLastSigninDate: today, minimaxLastSigninDone: false },
+      { id: "x", provider: "minimax-code", minimaxLastSigninDate: today, minimaxLastSigninDone: true },
       deps(signin),
       now,
     );
@@ -122,10 +120,23 @@ describe("a day is claimed at most once, even after toggling off and on", () => 
     expect(signin).not.toHaveBeenCalled();
   });
 
-  it("CodeBuddy: a touched day is not re-polled", async () => {
+  it("MiniMax: an unsealed day is retried within the same local day", async () => {
+    // A date without the seal means nothing was claimed, so the hour tick must
+    // try again instead of skipping the whole day.
+    const signin = vi.fn(async () => ({ ok: true, claimed: true, points: 400 }));
+    const r = await checkinMinimax(
+      { id: "x", provider: "minimax-code", minimaxLastSigninDate: today, minimaxLastSigninDone: false },
+      deps(signin),
+      now,
+    );
+    expect(signin).toHaveBeenCalledTimes(1);
+    expect(r.claimed).toBe(true);
+  });
+
+  it("CodeBuddy: a sealed day is not re-polled", async () => {
     const signin = vi.fn();
     const r = await checkinCodebuddy(
-      { id: "y", provider: "codebuddy-cn", codebuddyLastSigninDate: today, codebuddyLastSigninDone: false },
+      { id: "y", provider: "codebuddy-cn", codebuddyLastSigninDate: today, codebuddyLastSigninDone: true },
       deps(signin),
       now,
     );

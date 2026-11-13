@@ -1,7 +1,9 @@
 # Unreleased
 
 ## Fixes
-- **Nous Research**: adapt to the Portal retiring agent-key minting (`session_key_minting_retired`). `POST /api/oauth/agent-key` now answers `400 session_key_minting_retired`, so every refresh logged `Failed to mint Nous agent key, falling back to access_token` and spent a 15s-timeout round-trip on a dead endpoint. Minting is now treated as an expected steady state: the OAuth `access_token` is used directly as the inference credential, the failure is logged at `debug` instead of `warn`, and once the retirement is observed the dead endpoint is no longer called for the rest of the process. The refresh also emits explicit `null`s for `agentKeyId`/`agentKeyExpiresAt`/`agentKeyExpiresIn` — these fields are shallow-merged into the stored connection, so omitting them left a past `agentKeyExpiresAt` behind that made `getCredentialExpiryMs` treat the connection as permanently expired and refresh on every request. A mint failure for any *other* reason still warns. Covered by `tests/unit/nous-provider.test.js`.
+- **CodeBuddy daily check-in (每日签到)**: the upstream was a guessed path and simply did not exist — every call returned `404 page not found` across the whole `/v2/activity/*` family, so the claim never fired for either site. The live contract is the billing gateway WorkBuddy's own frontend calls (found in the `copilot.tencent.com/agents` bundle): `POST /v2/billing/meter/checkin-activity-status` for the state, `POST /v2/billing/meter/daily-checkin` for the claim, both under the same bearer + plugin headers as the quota lane. Business failures arrive as HTTP 200 with a non-zero `code`, so `10001` (今天已签到 / 签到活动未开启或已过期) is read as an idempotent no-op rather than an error, and `active: false` (intl, or CN outside a campaign) skips without claiming. Covered by `tests/unit/codebuddy-signin.test.js`.
+- **MiniMax Code daily check-in (每日签到)**: the claim never fired
+- **Nous Research**:
 
 
 

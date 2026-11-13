@@ -58,6 +58,15 @@ describe("minimax-code sign-in panel parsing", () => {
     expect(p.todayPoints).toBe(400);
   });
 
+it("treats today's live status 2 (unclaimed) as claimable", () => {
+    const p = parseSigninPanel({
+      data: { scene: 2, days: [{ day_no: 2, points: 400, status: 2, is_today: true, bonus_points: 0 }] },
+    });
+    expect(p.claimableToday).toBe(true);
+    expect(p.claimedToday).toBe(false);
+    expect(p.todayPoints).toBe(400);
+  });
+
   it("treats bonus_points as part of today's points", () => {
     const p = parseSigninPanel({
       data: { scene: 2, days: [{ day_no: 1, points: 400, bonus_points: 100, status: 1, is_today: true }] },
@@ -244,6 +253,25 @@ describe("minimax auto-signin scheduler gate", () => {
     expect(patch.minimaxLastSigninDone).toBe(true);
     expect(patch.minimaxLastSigninClaimed).toBe(false);
     expect(patch.minimaxLastSigninPoints).toBe(0);
+  });
+
+it("retries a day that recorded a date but nothing claimed (done:false)", async () => {
+    const now = new Date(2026, 0, 5, 10, 0).getTime();
+    const signin = vi.fn(async () => ({ ok: true, claimed: true, points: 400 }));
+    const deps = {
+      resolveConnectionProxyConfig: async () => ({}),
+      refreshAndUpdateCredentials: async (c) => ({ connection: c }),
+      signin,
+      updateConnection: vi.fn(async () => ({})),
+    };
+    const conn = {
+      id: "x", provider: "minimax-code",
+      minimaxLastSigninDate: localDayKey(now), minimaxLastSigninDone: false,
+    };
+    const r = await checkinConnection(conn, deps, now);
+    expect(r.skipped).toBeUndefined();
+    expect(signin).toHaveBeenCalledTimes(1);
+    expect(r.claimed).toBe(true);
   });
 
   it("does not seal the day when today is not claimable yet (done:false)", async () => {

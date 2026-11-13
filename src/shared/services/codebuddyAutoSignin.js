@@ -69,10 +69,14 @@ export async function checkinConnection(conn, deps, nowMs = Date.now()) {
   const today = localDayKey(nowMs);
 
   // Done for today (claimed now, or already claimed upstream) -> nothing to do.
-  // Once the day is touched at all we stop polling too: a second claim attempt
+  // Once the day is sealed we stop polling too: a second claim attempt
   // the same day only earns "already claimed", and the day gate already keeps
   // an off→on toggle from re-claiming. A fresh day has a different date key.
-  if (conn.codebuddyLastSigninDate === today) {
+  //
+  // `codebuddyLastSigninDate` alone is not enough: an earlier pass records the
+  // date even when nothing was claimed, so the *seal* (done===true) is the real
+  // gate. Without it one unlucky early pass silently skipped the whole day.
+  if (conn.codebuddyLastSigninDate === today && conn.codebuddyLastSigninDone) {
     return { skipped: "already-claimed-today" };
   }
 

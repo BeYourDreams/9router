@@ -79,16 +79,18 @@ export const MINIMAX_AUTOSIGNIN_CONFIG = {
   providers: ["minimax-code", "minimax-code-global"],
 };
 
-// CodeBuddy daily check-in (每日签到): claim the daily credit/points bonus once
-// per local calendar day for opted-in CodeBuddy (CN + intl) connections. Same
+// CodeBuddy daily check-in (每日签到): claim the daily credit bonus once per
+// local calendar day for opted-in CodeBuddy (CN + intl) connections. Same
 // scheduler shape as MINIMAX_AUTOSIGNIN_CONFIG — hourly tick, per-day gate.
 //
-// The upstream is the CodeBuddy activity gateway (Tencent APISIX in front of
-// /v2/activity/*). The exact resource path is isolated in
-// open-sse/services/codebuddySignin.js (SIGNIN_STATUS_PATH / SIGNIN_CLAIM_PATH)
-// so it can be corrected in one place if the contract shifts; every call reuses
-// the chat gateway's auth headers + bearer token, so a refused token just backs
-// off (never logs the account out).
+// The upstream is CodeBuddy's billing meter gateway (the same host as the quota
+// lane), reached the way WorkBuddy's own frontend does:
+//   POST /v2/billing/meter/checkin-activity-status   state
+//   POST /v2/billing/meter/daily-checkin             claim
+// The exact paths are isolated in open-sse/services/codebuddySignin.js so they
+// can be corrected in one place if the contract shifts; every call reuses the
+// chat gateway's auth headers + bearer token, so a refused token just backs off
+// (never logs the account out).
 export const CODEBUDDY_AUTOSIGNIN_CONFIG = {
   settingsKey: "codebuddyAutoSignin",   // { enabled, connections: { [id]: true } }
   tickIntervalMs: 60 * 60 * 1000,        // hourly tick; the per-day gate dedupes claims
