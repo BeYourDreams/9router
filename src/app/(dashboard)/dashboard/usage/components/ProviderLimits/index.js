@@ -170,6 +170,7 @@ export default function ProviderLimits() {
   const [minimaxSigninCfg, setMinimaxSigninCfg] = useState({});
   const [codebuddySigninCfg, setCodebuddySigninCfg] = useState({});
   const [modelscopeSigninCfg, setModelscopeSigninCfg] = useState({});
+  const [mossaiSigninCfg, setMossaiSigninCfg] = useState({});
   const [signinSettings, setSigninSettings] = useState({});
   // Server-computed roll-up for the master switch; null until first read.
   const [autoSigninState, setAutoSigninState] = useState(null);
@@ -622,10 +623,12 @@ export default function ProviderLimits() {
         setMinimaxSigninCfg(s?.minimaxAutoSignin || {});
         setCodebuddySigninCfg(s?.codebuddyAutoSignin || {});
         setModelscopeSigninCfg(s?.modelscopeAutoSignin || {});
+        setMossaiSigninCfg(s?.mossaiAutoSignin || {});
         setSigninSettings({
           minimaxAutoSignin: s?.minimaxAutoSignin || {},
           codebuddyAutoSignin: s?.codebuddyAutoSignin || {},
           modelscopeAutoSignin: s?.modelscopeAutoSignin || {},
+          mossaiAutoSignin: s?.mossaiAutoSignin || {},
         });
         setQuotaVisibility(s?.quotaVisibility || {});
       })
@@ -743,6 +746,26 @@ export default function ProviderLimits() {
     }
   }, [modelscopeSigninCfg, refreshAutoSigninState]);
 
+  const toggleMossaiAutoSignin = useCallback(async (connectionId) => {
+    const previous = mossaiSigninCfg;
+    const connections = { ...(mossaiSigninCfg.connections || {}) };
+    connections[connectionId] = !connections[connectionId];
+    const nextCfg = { ...mossaiSigninCfg, connections };
+    setMossaiSigninCfg(nextCfg);
+    setSigninSettings((prev) => ({ ...prev, mossaiAutoSignin: nextCfg }));
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mossaiAutoSignin: nextCfg }),
+      });
+      if (res.ok) refreshAutoSigninState();
+    } catch {
+      setMossaiSigninCfg(previous);
+      setSigninSettings((prev) => ({ ...prev, mossaiAutoSignin: previous }));
+    }
+  }, [mossaiSigninCfg, refreshAutoSigninState]);
+
   // Master switch: turn daily check-in on (or off) for every eligible connection
   // of every family. The fan-out happens server-side (PUT /api/settings/auto-signin)
   // NOTE: these must be declared before toggleAllAutoSignin — its useCallback dep
@@ -775,10 +798,12 @@ export default function ProviderLimits() {
         setMinimaxSigninCfg(s?.minimaxAutoSignin || {});
         setCodebuddySigninCfg(s?.codebuddyAutoSignin || {});
         setModelscopeSigninCfg(s?.modelscopeAutoSignin || {});
+        setMossaiSigninCfg(s?.mossaiAutoSignin || {});
         setSigninSettings({
           minimaxAutoSignin: s?.minimaxAutoSignin || {},
           codebuddyAutoSignin: s?.codebuddyAutoSignin || {},
           modelscopeAutoSignin: s?.modelscopeAutoSignin || {},
+          mossaiAutoSignin: s?.mossaiAutoSignin || {},
         });
       }
     } catch {
@@ -1515,6 +1540,26 @@ export default function ProviderLimits() {
                             type="button"
                             onClick={() => toggleModelscopeAutoSignin(conn.id)}
                             aria-label="Toggle ModelScope daily auto-login"
+                            aria-pressed={on}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${on ? "text-primary" : "text-text-muted"}`}
+                          >
+                            <span className="material-symbols-outlined text-[18px]">event_available</span>
+                          </button>
+                        </Tooltip>
+                      );
+                    })()}
+                    {(getAutoSigninConfigForProvider(conn.provider)?.settingsKey === "mossaiAutoSignin")
+                      && isAutoSigninEligible(conn) && (() => {
+                      const on = signinSettings.mossaiAutoSignin?.connections?.[conn.id] === true;
+                      const tooltipText = on
+                        ? "Daily check-in is on. 算力 are claimed automatically once per day. Click to turn off."
+                        : "Daily check-in (每日签到领算力): auto-claim the daily 算力 reward once per day. Click to turn on.";
+                      return (
+                        <Tooltip text={tooltipText}>
+                          <button
+                            type="button"
+                            onClick={() => toggleMossaiAutoSignin(conn.id)}
+                            aria-label="Toggle MossAI daily check-in"
                             aria-pressed={on}
                             className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${on ? "text-primary" : "text-text-muted"}`}
                           >

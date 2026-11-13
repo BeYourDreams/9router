@@ -851,6 +851,27 @@ export function parseQuotaData(provider, data) {
         }
         break;
 
+      case "mossai":
+        // MossAI — 算力 rows. "算力余额" and "签到奖励" are credit balances
+        // (isCreditBalance → 💰 with the amount as total); "今日签到" is a
+        // percent row whose remaining is 0-100.
+        if (data.quotas) {
+          Object.entries(data.quotas).forEach(([name, quota]) => {
+            normalizedQuotas.push({
+              name,
+              used: quota.used || 0,
+              total: quota.total || 0,
+              resetAt: quota.resetAt || null,
+              remainingPercentage: quota.remainingPercentage,
+              isCreditBalance: quota.isCreditBalance === true,
+              currency: quota.currency,
+              unit: quota.unit,
+              emptyMessage: quota.message || null,
+            });
+          });
+        }
+        break;
+
       case "minimax-code":
       case "minimax-code-global":
         // Service already returns dashboard-shaped rows: a credits balance

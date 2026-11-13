@@ -122,6 +122,11 @@ export async function backfillDefaultOptIns(deps) {
         .then(({ configureModelScopeAutoSignin }) => configureModelScopeAutoSignin(saved))
         .catch(() => {});
     }
+    if (patch.mossaiAutoSignin) {
+      import("@/shared/services/mossaiAutoSignin")
+        .then(({ configureMossAutoSignin }) => configureMossAutoSignin(saved))
+        .catch(() => {});
+    }
     console.log(`[AutoSignin] backfilled default opt-in for ${
       Object.values(patch).reduce((n, cfg) => n + Object.keys(cfg.connections).length, 0)
     } connection(s)`);

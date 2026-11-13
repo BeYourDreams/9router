@@ -111,6 +111,18 @@ export const MODELSCOPE_AUTOSIGNIN_CONFIG = {
   providers: ["modelscope"],
 };
 
+// MossAI (mossai.cc) daily check-in (每日签到领取算力): one claim per local
+// calendar day per opted-in account. The web access token authenticates the
+// /api/promotion/checkin claim and the /api/balance read — see
+// open-sse/services/mossaiSignin.js for the endpoints and shapes.
+export const MOSSAI_AUTOSIGNIN_CONFIG = {
+  settingsKey: "mossaiAutoSignin",       // { enabled, connections: { [id]: true } }
+  tickIntervalMs: 60 * 60 * 1000,        // hourly tick; the per-day gate dedupes claims
+  dayAnchorLocalHour: 0,                 // rollover at local midnight
+  failureCooldownMs: 30 * 60 * 1000,     // do not hammer after a failed claim
+  providers: ["mossai"],
+};
+
 // The daily check-in family, in the order the dashboard lists it. Every entry
 // shares the scheduler shape above: an hourly tick, a per-connection opt-in map
 // at settings[settingsKey].connections, and `enabled: false` as a global off
@@ -120,6 +132,7 @@ export const AUTO_SIGNIN_CONFIGS = [
   MINIMAX_AUTOSIGNIN_CONFIG,
   CODEBUDDY_AUTOSIGNIN_CONFIG,
   MODELSCOPE_AUTOSIGNIN_CONFIG,
+  MOSSAI_AUTOSIGNIN_CONFIG,
 ];
 
 // Which auth types can actually be checked in, per provider. MiniMax Code
@@ -132,6 +145,7 @@ export const AUTO_SIGNIN_AUTH_TYPES = {
   "codebuddy-cn": ["oauth", "apikey"],
   "codebuddy-intl": ["oauth", "apikey"],
   modelscope: ["apikey"],
+  mossai: ["apikey"],
 };
 
 // Daily check-in is ON for newly added accounts: a fresh MiniMax Code /

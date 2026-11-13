@@ -141,6 +141,12 @@ async function runHeavyStartup() {
       .catch((e) => console.log("[ModelScopeLogin] scheduler start failed:", e.message));
   }
 
+  if (hasMossAutoSigninEnabled(settings)) {
+    import("@/shared/services/mossaiAutoSignin")
+      .then(({ startMossAutoSignin }) => startMossAutoSignin())
+      .catch((e) => console.log("[MossSignin] scheduler start failed:", e.message));
+  }
+
   // Proactive OAuth token refresh (e.g. grok-cli ~6h TTL). Module is idempotent
   // and also started from custom-server.js when that entry is used.
   import("@/sse/services/backgroundTokenRefresh.js")
@@ -177,6 +183,14 @@ function hasCodeBuddyAutoSigninEnabled(settings) {
 // unless at least one ModelScope connection opted in. Respects a global off switch.
 function hasModelScopeAutoSigninEnabled(settings) {
   const cfg = settings?.modelscopeAutoSignin;
+  if (!cfg || cfg.enabled === false) return false;
+  return Object.values(cfg.connections || {}).some(Boolean);
+}
+
+// Cheap local check: keep the MossAI daily check-in scheduler unloaded unless
+// at least one MossAI connection opted in. Respects a global off switch.
+function hasMossAutoSigninEnabled(settings) {
+  const cfg = settings?.mossaiAutoSignin;
   if (!cfg || cfg.enabled === false) return false;
   return Object.values(cfg.connections || {}).some(Boolean);
 }

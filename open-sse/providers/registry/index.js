@@ -159,6 +159,7 @@ import p160 from "./yuanbao-web.js";
 import p161 from "./yiyan-web.js";
 import p162 from "./ling-web.js";
 import p165 from "./modelscope.js";
+import p166 from "./mossai.js";
 export default [
   p0,
   p1,
@@ -318,4 +319,5 @@ p153,
   p163,
   p164,
   p165,
+  p166,
 ];

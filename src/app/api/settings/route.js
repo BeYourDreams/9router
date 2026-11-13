@@ -135,6 +135,15 @@ export async function PATCH(request) {
         .catch((error) => console.warn("[ModelScopeLogin] settings update failed:", error.message));
     }
 
+    if (Object.prototype.hasOwnProperty.call(body, "mossaiAutoSignin")) {
+      // Load / unload the MossAI daily check-in scheduler to match the new opt-in set.
+      import("@/shared/services/mossaiAutoSignin")
+        .then(({ configureMossAutoSignin }) => {
+          configureMossAutoSignin(settings);
+        })
+        .catch((error) => console.warn("[MossSignin] settings update failed:", error.message));
+    }
+
     const { password, oidcClientSecret, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
     return NextResponse.json(safeSettings, { headers: SETTINGS_RESPONSE_HEADERS });

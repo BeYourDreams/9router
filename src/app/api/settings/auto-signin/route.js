@@ -67,6 +67,11 @@ export async function PUT(request) {
         .then(({ configureModelScopeAutoSignin }) => configureModelScopeAutoSignin(saved))
         .catch((e) => console.warn("[ModelScopeLogin] bulk configure failed:", e.message));
     }
+    if (patch.mossaiAutoSignin) {
+      import("@/shared/services/mossaiAutoSignin")
+        .then(({ configureMossAutoSignin }) => configureMossAutoSignin(saved))
+        .catch((e) => console.warn("[MossSignin] bulk configure failed:", e.message));
+    }
 
     return NextResponse.json(summarizeAutoSignin(connections, saved), { headers: RESPONSE_HEADERS });
   } catch (error) {
