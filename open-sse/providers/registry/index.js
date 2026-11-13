@@ -160,6 +160,8 @@ import p161 from "./yiyan-web.js";
 import p162 from "./ling-web.js";
 import p165 from "./modelscope.js";
 import p166 from "./mossai.js";
+import p167 from "./sensenova-intl.js";
+import p168 from "./synthetic.js";
 export default [
   p0,
   p1,
@@ -306,7 +308,7 @@ export default [
   p147,
   p151,
   p152,
-p153,
+  p153,
   p154,
   p155,
   p156,
@@ -320,4 +322,6 @@ p153,
   p164,
   p165,
   p166,
+  p167,
+  p168,
 ];

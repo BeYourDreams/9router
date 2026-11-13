@@ -1,5 +1,7 @@
 "use client";
 
+import { applyQoderModelNames } from "@/shared/utils/providerCustomModels";
+
 import { useState, useMemo, useEffect } from "react";
 import PropTypes from "prop-types";
 import Modal from "./Modal";
@@ -20,6 +22,7 @@ const PROVIDER_ORDER = [
   ...Object.keys(APIKEY_PROVIDERS),
 ];
 
+
 // Providers that need no auth — always show in model selector.
 // `hidden` registry entries (e.g. mimo-free — Xiaomi ended the free channel)
 // must stay out of the picker even though they keep noAuth/hasFree flags.
@@ -34,6 +37,7 @@ const NO_AUTH_PROVIDER_IDS = Object.keys(FREE_PROVIDERS).filter(id => FREE_PROVI
 // model the user deleted. They keep the same static+custom+alias source as every
 // other provider; re-import is one click away on the provider page.
 const LIVE_CATALOG_PROVIDERS = ["cursor", "zed"];
+
 
 // Fetch a provider's account-scoped catalog for every active connection and merge
 // the results. Entries collapse by model id on purpose: two connections of the
@@ -438,7 +442,7 @@ export default function ModelSelectModal({
           .map((m) => ({ id: m.id, name: m.name || m.id, value: `${alias}/${m.id}`, isCustom: true }));
 
         const merged = [
-          ...hardcodedModels.map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) })),
+          ...applyQoderModelNames(hardcodedModels, customModels, alias).map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) })),
           ...customAliasModels,
           ...customRegisteredModels,
         ];

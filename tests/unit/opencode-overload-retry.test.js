@@ -8,6 +8,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Keep the retry loop under test in isolation: no network, no credentials.
 const { baseExecuteMock } = vi.hoisted(() => ({ baseExecuteMock: vi.fn() }));
 
+vi.mock("../../open-sse/services/opencodeTlsClient.js", () => ({
+  opencodeTlsFetch: vi.fn(),
+}));
+
 vi.mock("../../open-sse/executors/base.js", () => ({
   BaseExecutor: class {
     async execute(args) {

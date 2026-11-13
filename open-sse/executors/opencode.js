@@ -8,6 +8,7 @@ import { resolveSessionId } from "../utils/sessionManager.js";
 import { isMuseSparkModel } from "../providers/models/helpers.js";
 import { applyFingerprintTools } from "../utils/opencodeFingerprint.js";
 import { executeFreeLane } from "./opencode-free-lane.js";
+import { opencodeTlsFetch } from "../services/opencodeTlsClient.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import {
   normalizeResponsesInput,
@@ -25,6 +26,43 @@ const REQ_FIELD = "_opencodeRequest";
 export const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 export const OPENCODE_REQUEST_RE = /^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 const BASE62_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+// Free-lane load shedding: total attempts (first try + retries) and backoff.
+// Live bursts last ~20 s (a request that kept failing for 8 s succeeded at 19 s),
+// so the schedule below covers 800+1600+2400+3200+4000*3 = ~20 s.
+const OPENCODE_OVERLOAD_ATTEMPTS = 8;
+const OPENCODE_OVERLOAD_BASE_MS = 800;
+const OPENCODE_OVERLOAD_MAX_MS = 4000;
+const OPENCODE_OVERLOAD_RE = /overloaded/i;
+
+/**
+ * Classify a gated free-lane rejection:
+ * - "overload": transient 429 load shedding, worth retrying.
+ * - "session":  any other 429 (FreeUsageLimitError) or 403, which can mean the
+ *               session id itself is spent or flagged.
+ * - null:       anything else.
+ */
+async function classifyRejection(response) {
+  const status = response?.status;
+  if (status !== 429 && status !== 403) return null;
+  if (status === 403) return "session";
+  try {
+    // The body is the response stream; clone it so a non-retryable 429 is still
+    // delivered intact to the caller.
+    return OPENCODE_OVERLOAD_RE.test(await response.clone().text()) ? "overload" : "session";
+  } catch {
+    return "session";
+  }
+}
+
+function sleep(ms, signal) {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const onAbort = () => { clearTimeout(timer); resolve(); };
+    const timer = setTimeout(() => { signal?.removeEventListener?.("abort", onAbort); resolve(); }, ms);
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+  });
+}
 
 function hasValidOpencodeVersion(ua) {
   const m = String(ua || "").match(/opencode\/(\d+)\.(\d+)(?:\.(\d+))?/i);
@@ -177,6 +215,7 @@ export function stableSessionId(credentials) {
   return sessionId;
 }
 
+
 function lastUserText(body) {
   try {
     if (!body || typeof body !== "object") return "";
@@ -230,6 +269,27 @@ function normalizeRequestId(value) {
   const normalized = value.trim();
   if (!normalized || normalized.length > MAX_SESSION_LENGTH) return null;
   return OPENCODE_REQUEST_RE.test(normalized) ? normalized : null;
+
+}
+
+// The memoized sessions above are never refreshed on failure, so once upstream
+// spends or flags one, every later request reuses it and fails the same way
+// until restart (#5559). Drop the rejected id so the next request mints a fresh
+// one. Match by value, not identity key: a concurrent request may already have
+// minted a replacement, which must survive.
+export function forgetOpencodeSession(sessionId) {
+  if (!sessionId) return false;
+  let removed = false;
+  for (const store of [stableOpencodeSessions, translatedOpencodeSessions]) {
+    for (const [key, entry] of store) {
+      if (entry.sessionId === sessionId) {
+        store.delete(key);
+        removed = true;
+      }
+    }
+  }
+  return removed;
+
 }
 
 function bodyHasSessionHints(body) {
@@ -467,8 +527,21 @@ export class OpenCodeExecutor extends BaseExecutor {
 
   async execute(args) {
     const credentials = this.prepareRequestCredentials(args);
+    // The free gate keys on the TLS ClientHello, so a native Node fetch is refused
+    // no matter how faithful the body is. Route through the impersonating client
+    // and keep proxy handling on the existing path (proxyAwareFetch delegates to
+    // directFetch when no proxy is configured, and passes the resolved proxy URL
+    // through when one is). Fail-open: without wreq-js the request still goes out
+    // on native fetch instead of erroring here.
+    const directFetch = (url, options, proxyUrl) => opencodeTlsFetch(url, {
+      method: options.method,
+      headers: options.headers,
+      body: options.body,
+    }, { signal: options.signal, proxyUrl });
+    // wreq-js tunnels the proxy itself; adapters that cannot must stay on undici.
+    directFetch.proxyCapable = true;
     return executeFreeLane({
-      run: () => super.execute({ ...args, credentials }),
+      run: () => super.execute({ ...args, credentials, directFetch }),
       stores: [stableOpencodeSessions, translatedOpencodeSessions],
       sessionId: credentials[SESSION_FIELD],
       signal: args.signal,
