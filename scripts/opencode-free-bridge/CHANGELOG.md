@@ -1,5 +1,40 @@
 # Changelog
 
+## [2.4.0] — 2026-11-14
+
+Anthropic clients, and a pool that spends no request twice.
+
+`/v1/messages` (and `count_tokens`) now sit beside `/v1/chat/completions`, so
+Claude Code and anything else speaking the Anthropic SDK can use the free tier.
+The route relays through this bridge's own chat route rather than growing a
+second copy of the machinery, so it inherits the gate anchors, session minting,
+the egress pool and the self-healing retries for free.
+
+- A refused request walks the pool instead of failing over once. Two spent
+  members at the front used to hand the client a 429 while the rest of the pool
+  was healthy; the client now sees 429 only when every enabled member was
+  refused in that request.
+- A 429's `Retry-After` (observed ~77415s, the daily reset) becomes that
+  member's cooldown, so a spent egress leaves rotation until its allowance
+  returns instead of burning a request on every retry.
+- `priority-failover` joins the strategies: keep the pool's order and fall back
+  down the list, returning to the top when the earlier entries recover.
+- A parked egress is probed every 60s and returned to rotation once it answers.
+- `usage.json` records per-egress wire bytes and tokens, so the mobile-data
+  cost of the bridge is readable instead of guessed.
+- `/v1/models` is reconciled against the gateway's live price list: an id
+  upstream stopped serving is no longer advertised (advertising it sent clients
+  into a 404 that burned their per-IP burst quota), while an id upstream still
+  serves free stays visible despite a stale catalog `deprecated` flag.
+- A tool named `run_code` is renamed on the way out and restored on the way
+  back. Upstream answers 429 `FreeUsageLimitError` to that name alone, which
+  reads like a spent allowance but is a name filter.
+- IPv4 is preferred for egress on both processes: the gateway refuses IPv6 with
+  a 429. Each falls back through the orders its Node understands, so an operator
+  on Node 18 asking for `ipv6first` no longer loses the proxy at boot.
+- The panel resets the strategy select before filling it, so an unknown strategy
+  from a newer release cannot leave it stuck on a stale option.
+
 ## [2.3.1] — 2026-10-25
 
 Pool health survives a restart.
