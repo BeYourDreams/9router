@@ -50,7 +50,11 @@ const DEFAULT_SETTINGS = {
   mitmRouterBaseUrl: DEFAULT_MITM_ROUTER_BASE,
   dnsToolEnabled: {},
   rtkEnabled: true,
-  headroomEnabled: false,
+  // Opt-in: trims tool *definitions* (descriptions, $schema, examples).
+  // Separate from rtkEnabled because it edits what the model is told about a
+  // tool, not what a tool returned.
+  rtkToolTrim: false,
+
   headroomUrl: DEFAULT_HEADROOM_URL,
   headroomCompressUserMessages: false,
   headroomTimeoutMs: 3000,
@@ -63,7 +67,7 @@ const DEFAULT_SETTINGS = {
   customPrompt: "",
   pxpipeEnabled: false,
   pxpipeAutoInstall: true,
-  pxpipeMinChars: 25000,
+  pxpipeMinChars: 8000,
   pxpipeTimeoutMs: 15000,
   // Per-provider user header overrides applied at dispatch: { [providerId]: { headers: {..} } }
   providerOverrides: {},

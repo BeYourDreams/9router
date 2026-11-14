@@ -4,7 +4,10 @@
 import { FORMATS } from "../translator/formats.js";
 
 const DEFAULT_TIMEOUT_MS = 15000;
-const DEFAULT_MIN_CHARS = 25000;
+// 8000 chars ≈ 2k tokens. The old 25000 gate never fired on the case this
+// saver exists for: a coding client's inlined CLAUDE.md/AGENTS.md dump is
+// typically 8–20k chars, so first requests went out untouched.
+const DEFAULT_MIN_CHARS = 8000;
 // pxpipe's own profitability gate assumes ~4 chars/token; reuse it for the
 // estimated before/after numbers surfaced in stats (marked "estimated" in UI).
 const EST_CHARS_PER_TOKEN = 4;

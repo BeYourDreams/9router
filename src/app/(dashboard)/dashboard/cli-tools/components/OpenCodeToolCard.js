@@ -7,6 +7,8 @@ import BaseUrlSelect from "./BaseUrlSelect";
 import { rememberEndpoint } from "./cliEndpointPresets";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
+import { buildModelGroups } from "@/shared/utils/selectableModels";
+import { collectFreeModelIds, OPENCODE_FREE_PROVIDER_IDS } from "@/shared/utils/freeModelIds";
 
 export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders, cloudEnabled, initialStatus, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl }) {
   const [status, setStatus] = useState(initialStatus || null);
@@ -25,6 +27,8 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
   const [customBaseUrl, setCustomBaseUrl] = useState("");
   const [selectedModels, setSelectedModels] = useState([]);
   const [activeModel, setActiveModel] = useState("");
+  const [freeModelIds, setFreeModelIds] = useState([]);
+  const [enablingFreeModels, setEnablingFreeModels] = useState(false);
   const selectedModelsRef = useRef([]);
 
   useEffect(() => {
@@ -41,10 +45,59 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
     if (initialStatus) setStatus(initialStatus);
   }, [initialStatus]);
 
+  // Free lanes across the four OpenCode providers (oc / ocfv2 / ocz / oczv2),
+  // resolved with the same rules as the picker so the button cannot offer a
+  // model the user disabled or a lane without a connection.
+  const loadFreeModels = async () => {
+      const readJson = async (url) => {
+        try {
+          const res = await fetch(url, { cache: "no-store" });
+          return res.ok ? await res.json() : null;
+        } catch {
+          return null;
+        }
+      };
+      const [providersData, aliasData, customData, disabledData] = await Promise.all([
+        readJson("/api/providers"),
+        readJson("/api/models/alias"),
+        readJson("/api/models/custom"),
+        readJson("/api/models/disabled"),
+      ]);
+      const allConnections = providersData?.connections ?? activeProviders ?? [];
+      const connections = allConnections.filter((conn) => conn && conn.isActive !== false);
+      const groups = buildModelGroups({
+        connections,
+        allConnections,
+        modelAliases: aliasData?.aliases || {},
+        customModels: customData?.models || [],
+        disabledModels: disabledData?.disabled || {},
+      });
+      setFreeModelIds(collectFreeModelIds(groups, OPENCODE_FREE_PROVIDER_IDS));
+  };
+
+  // Free models this card can still add — the button hides itself once none remain.
+  const addableFreeModels = freeModelIds.filter((m) => !selectedModels.includes(m.value));
+  const addableFreeCount = addableFreeModels.length;
+
+  const handleEnableFreeModels = async () => {
+    const toAdd = addableFreeModels;
+    if (toAdd.length === 0) return;
+    setEnablingFreeModels(true);
+    try {
+      const merged = [...selectedModels, ...toAdd.map((m) => m.value)];
+      setSelectedModels(merged);
+      if (!activeModel) setActiveModel(merged[0]);
+      await saveModels(merged);
+    } finally {
+      setEnablingFreeModels(false);
+    }
+  };
+
   useEffect(() => {
     if (isExpanded) {
       if (!status) checkStatus();
       fetchModelAliases();
+      loadFreeModels();
     }
   }, [isExpanded]);
 
@@ -391,6 +444,16 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
                     </div>
                     <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                       <button onClick={() => setModalOpen(true)} disabled={!activeProviders?.length} className={`px-2 py-1 rounded border text-xs transition-colors ${activeProviders?.length ? "bg-surface border-border text-text-main hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}>Add Model</button>
+                      {addableFreeCount > 0 && (
+                        <button
+                          onClick={handleEnableFreeModels}
+                          disabled={enablingFreeModels}
+                          className="px-2 py-1 rounded border text-xs bg-green-500/10 border-green-500/40 text-green-700 dark:text-green-400 hover:bg-green-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title={`Add every free OpenCode model (${addableFreeCount})`}
+                        >
+                          {enablingFreeModels ? "Adding..." : `Enable Free Models (${addableFreeCount})`}
+                        </button>
+                      )}
                       <span className="text-xs text-text-muted">
                         {selectedModels.length > 0 && activeModel ? (
                           <>Active: <span className="text-primary">{activeModel}</span></>

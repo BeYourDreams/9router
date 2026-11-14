@@ -14,6 +14,7 @@ import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
+import { isFreeModelId, OPENCODE_FREE_PROVIDER_IDS } from "@/shared/utils/freeModelIds";
 import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
@@ -40,6 +41,16 @@ const AUTO_PING_SETTINGS_KEYS = {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Model lists from different sources share ids; keep the first (registry wins).
+function dedupeById(models) {
+  const seen = new Set();
+  return models.filter((m) => {
+    if (!m?.id || seen.has(m.id)) return false;
+    seen.add(m.id);
+    return true;
+  });
 }
 
 export default function ProviderDetailPage() {
@@ -264,6 +275,29 @@ export default function ProviderDetailPage() {
         }
       }
     });
+  };
+
+  // One click over every free-tier model this provider lists: un-disable the ones
+  // the user turned off and register the ones that only exist upstream (no
+  // static registry row), e.g. the rotating OpenCode free catalog.
+  const handleEnableFreeModels = async (freeIds) => {
+    const ids = (freeIds || []).map((m) => m.id).filter(Boolean);
+    if (ids.length === 0) return;
+    try {
+      // Per id on purpose: the id-less DELETE clears the whole provider row and
+      // would re-enable the paid models the user disabled on purpose.
+      await Promise.allSettled(
+        ids
+          .filter((id) => disabledModelIds.includes(id))
+          .map((id) => fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}&id=${encodeURIComponent(id)}`, { method: "DELETE" }))
+      );
+      if (ids.some((id) => disabledModelIds.includes(id))) await fetchDisabledModels();
+      const known = new Set([...models.map((m) => m.id), ...kiloFreeModels.map((m) => m.id)]);
+      const fresh = ids.filter((id) => !known.has(id));
+      if (fresh.length > 0) await handleAddCustomModels(fresh, "llm", providerStorageAlias);
+    } catch (error) {
+      console.log("Error enabling free models:", error);
+    }
   };
 
   const handleEnableAll = async () => {
@@ -1836,13 +1870,39 @@ export default function ProviderDetailPage() {
             )}
           </div>
           {!isCompatible && (() => {
-            const allIds = [
+            const allModels = [
               ...models,
               ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
-            ].filter((m) => { const k = getModelKind(m); return !k || k === "llm"; }).map((m) => m.id);
+            ].filter((m) => { const k = getModelKind(m); return !k || k === "llm"; });
+            const allIds = allModels.map((m) => m.id);
             const activeIds = allIds.filter((id) => !disabledModelIds.includes(id));
+            // Free lanes only: static rows plus the live catalog (oc/ocfv2/ocz)
+            // whose free list rotates and never lands in the registry.
+            // The live feed carries no kind, so drop ids the registry declares
+            // as non-llm (e.g. oc/jev-1.13-free is System One).
+            const declaredKinds = new Map(models.map((m) => [m.id, getModelKind(m)]));
+            const freeAll = OPENCODE_FREE_PROVIDER_IDS.includes(providerId)
+              ? dedupeById([
+                  ...allModels,
+                  ...suggestedModels,
+                ].filter((m) => {
+                  const k = declaredKinds.get(m.id);
+                  return isFreeModelId(m.id) && (!k || k === "llm");
+                }))
+              : [];
             return (
               <div className="flex gap-2">
+                {freeAll.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon="bolt"
+                    onClick={() => handleEnableFreeModels(freeAll)}
+                    title={`Enable every free model (${freeAll.length})`}
+                  >
+                    Enable Free Models ({freeAll.length})
+                  </Button>
+                )}
                 {disabledModelIds.length > 0 && (
                   <Button size="sm" variant="secondary" icon="restart_alt" onClick={handleEnableAll}>
                     Active All
