@@ -1,6 +1,23 @@
 #!/usr/bin/env bun
 const dns = require("dns");
-dns.setDefaultResultOrder(process.env.DNS_RESULT_ORDER || "ipv4first");
+// `ipv6first` only exists from Node 22, and an unsupported order throws
+// ERR_INVALID_ARG_VALUE at module load — which kills the bridge before it
+// listens instead of merely changing a preference. Fall back in order.
+const DNS_RESULT_ORDER = (() => {
+  const wanted = String(process.env.DNS_RESULT_ORDER || "ipv4first").trim().toLowerCase();
+  for (const order of [wanted, "ipv4first", "verbatim"]) {
+    try {
+      dns.setDefaultResultOrder(order);
+      if (order !== wanted) {
+        console.warn(
+          `[opencode-free-bridge] DNS_RESULT_ORDER=${wanted} is not supported by this Node (${process.versions.node}); using ${order}`
+        );
+      }
+      return order;
+    } catch {}
+  }
+  return null;
+})();
 const http = require("http");
 const crypto = require("crypto");
 let VERSION = "1.5.0";
@@ -8,6 +25,7 @@ try {
   VERSION = require("./package.json").version || VERSION;
 } catch {}
 const { effectiveMaxTokens } = require("./token-budget");
+const { handleAnthropicMessages, handleCountTokens } = require("./anthropic");
 
 /**
  * Load a sibling module, or a fallback when the file is not on disk yet.
@@ -206,6 +224,7 @@ const UPDATE_FILES = [
   "proxy.js",
   "panel.js",
   "egress-proxy.js",
+  "anthropic.js",
   "server.js",
   "THIRD_PARTY_NOTICES.md",
 ];
@@ -486,6 +505,31 @@ async function egressFetch(url, init, state) {
 }
 
 /**
+ * Cooldown implied by an upstream `Retry-After` header, in milliseconds.
+ *
+ * A spent free-tier allowance answers 429 with `Retry-After` set to the seconds
+ * until the daily reset (observed ~77415s). Honouring it means a spent egress
+ * stays out of rotation until the allowance actually returns, instead of being
+ * retried every few minutes and burning a request on each attempt.
+ *
+ * Returns null when the header is missing or unparseable, so callers fall back
+ * to their previous fixed cooldown. Delta-seconds is the form upstream sends;
+ * an HTTP-date is also accepted because the header allows it.
+ */
+function retryAfterMs(res) {
+  const raw = res?.headers?.get?.("retry-after");
+  if (!raw) return null;
+  const text = String(raw).trim();
+  if (/^\d+$/.test(text)) {
+    const secs = parseInt(text, 10);
+    return secs > 0 ? secs * 1000 : null;
+  }
+  const at = Date.parse(text);
+  if (Number.isNaN(at)) return null;
+  const delta = at - Date.now();
+  return delta > 0 ? delta : null;
+}
+/**
  * Record a refusal against the egress that produced it.
  *
  * An empty URL is the `direct` pool entry, which is a real egress, so this
@@ -708,12 +752,20 @@ async function discoverModels() {
     const json = await res.json();
     const items = json.data || [];
 
-    // The provider catalog decides what is free — it is the file the CLI reads
-    // at boot, and its `cost`/`status` fields are facts about the plan. The
-    // gateway's /models list only contributes models the catalog does not
-    // describe (a few evaluator entries), because a name is not a price: a
-    // model named `-free` that the catalog marks deprecated must drop out, and
-    // one the catalog marks free must survive /models omitting it.
+    // The gateway is the live source of truth: its /models entries carry the
+    // price applied right now (`cost.text.input/output.price`), and an id it
+    // stopped serving disappears from the list. The provider catalog still
+    // supplies families, reasoning flags and endpoints, but its `status` field
+    // lags — it kept `minimax-m3.1-flash-free` marked deprecated after upstream
+    // was already serving it free. So the gateway's price is reconciled into the
+    // verdicts first, and only an unknown price falls back to the catalog's
+    // ruling (or, before the first catalog read, to the `-free` suffix).
+    const promoted = identity.applyGatewayPricing(items);
+    if (promoted.length > 0) {
+      console.log(
+        `[opencode-free-bridge] Gateway price list re-ruled: ${promoted.slice(0, 6).join(", ")}${promoted.length > 6 ? ` (+${promoted.length - 6})` : ""}`
+      );
+    }
     const ownedBy = new Map(items.map((i) => [String(i.id || "").toLowerCase(), i]));
     const kept = [];
     const seen = new Set();
@@ -723,20 +775,21 @@ async function discoverModels() {
       seen.add(lower);
       kept.push(id);
     };
-
-    for (const id of identity.getFreeModels()) keep(id);
-    // With the catalog loaded this loop adds nothing today: every id /models
-    // offers is either described by the catalog (already ruled on) or is an
-    // evaluator entry. It exists for the window before the first catalog read,
-    // when the name is the only signal available — a bridge that answers
-    // /v1/models with an empty list for the first seconds after boot is worse
-    // than one that guesses and corrects itself on the next refresh.
+    // Only ids the gateway is serving right now are advertised: a catalog-free
+    // model missing from /models is retired, and advertising it sends clients
+    // into a 404 that burns their per-IP burst quota.
     for (const item of items) {
       const id = String(item.id || "");
       const lower = id.toLowerCase();
       if (lower.startsWith("jev-")) continue; // systemone evaluator models
       const verdict = identity.getCatalogVerdict(lower);
-      if (verdict) continue; // the catalog already ruled on this id
+      if (verdict === "free") {
+        keep(id);
+        continue;
+      }
+      if (verdict) continue; // paid or deprecated, and the gateway agrees
+      // No ruling at all: the catalog has not been read yet in this process.
+      // Guess from the name, then correct itself on the next refresh.
       if (!lower.endsWith("-free") && !lower.includes("-contributor") && lower !== "big-pickle") continue;
       keep(id);
     }
@@ -765,11 +818,10 @@ async function discoverModels() {
   }
 }
 
-function normalizeModel(rawModel, keyed) {
+function normalizeModel(rawModel) {
   if (typeof rawModel !== "string") return "";
   const stripped = rawModel.trim().replace(/^(opencode\/|oc\/|zen\/|9router\/|openai\/)/i, "").trim();
   if (!stripped) return "";
-  if (keyed) return stripped;
   // A name that is already a real model id is passed through untouched; only a
   // shorthand is resolved. The catalog's families are consulted first, so a
   // revision that retired keeps resolving to a live sibling without a bridge
@@ -943,6 +995,21 @@ function getToolName(tool) {
   return "";
 }
 
+// Client tools whose name alone makes upstream answer 429 FreeUsageLimitError.
+// Measured on 2026-11-03 against the live gateway with an otherwise passing
+// request: a tool called `run_code` is refused, while the same schema under
+// `run-code`, `runcode`, `run_program` or `code_exec` answers 200, and
+// `run_code_client` is refused too, so the match is on the substring. The
+// refusal carries the quota wording, which makes it look like a spent
+// allowance; it is a name filter. `prepareToolsWithFingerprint` renames such a
+// tool on the way out and restores the client's name on the way back.
+const BLOCKED_TOOL_NAME_PATTERNS = [/run_code/i];
+const BLOCKED_TOOL_ALIAS = "run_program";
+
+function isBlockedToolName(name) {
+  return BLOCKED_TOOL_NAME_PATTERNS.some((pattern) => pattern.test(name));
+}
+
 /**
  * Merge the client's tools with the fingerprint tools the gate requires.
  *
@@ -984,6 +1051,22 @@ function prepareToolsWithFingerprint(clientTools = [], flat = false, scope = nul
     const def = t.function && typeof t.function === "object" ? t.function : t;
     const description = def.description || "";
     const parameters = def.parameters || { type: "object", properties: {} };
+
+    if (isBlockedToolName(name)) {
+      let alias = BLOCKED_TOOL_ALIAS;
+      for (let i = 2; takenNames.has(alias); i++) {
+        alias = `${BLOCKED_TOOL_ALIAS}${i}`;
+      }
+      takenNames.add(alias);
+      aliasToOriginal.set(alias, name);
+      originalToAlias.set(name, alias);
+      normalized.push(
+        flat
+          ? { type: "function", name: alias, description, parameters }
+          : { type: "function", function: { name: alias, description, parameters } }
+      );
+      continue;
+    }
 
     if (fingerprintNames.includes(name)) {
       if (presentExactFingerprints.has(name)) continue;
@@ -1478,7 +1561,7 @@ function getProjectId() {
   }
 }
 
-function buildUpstreamHeaders(req, sessionId, targetModel, keyed) {
+function buildUpstreamHeaders(req, sessionId) {
   const downstreamUa = req?.headers?.["user-agent"] || "";
   const ua = isValidV2UserAgent(downstreamUa) ? downstreamUa : gateSafeUserAgent();
   const client = req?.headers?.["x-opencode-client"];
@@ -1499,14 +1582,8 @@ function buildUpstreamHeaders(req, sessionId, targetModel, keyed) {
     project: String(project),
     sessionId,
   });
-  // A keyed caller (opencode-zen-v2) authenticates its own paid models; the free
-  // lane keeps the attested public identity this bridge exists to impersonate.
-  const clientAuth =
-    keyed && identity.getCatalogVerdict(String(targetModel || "").toLowerCase()) === "paid"
-      ? req?.headers?.authorization || req?.headers?.Authorization || ""
-      : "";
   return {
-    "Authorization": clientAuth || "Bearer public",
+    "Authorization": "Bearer public",
     "Content-Type": "application/json",
     // The CLI sends `*/*` here (it always streams via the body, not the Accept
     // header). Matching it costs nothing and removes a difference the gate
@@ -1968,6 +2045,10 @@ function handleRequest(req, res) {
     res.writeHead(200, { "Content-Type": "application/json" });
     const idState = identity.getState();
     const proxyState = proxy.describe();
+    let usageView = null;
+    try {
+      usageView = proxy.describeUsage();
+    } catch {}
     const gateThrottled =
       lastFailedGateRetryTime > 0 &&
       Date.now() - lastFailedGateRetryTime < GATE_RETRY_COOLDOWN_MS &&
@@ -1995,6 +2076,9 @@ function handleRequest(req, res) {
                   : "direct",
           ...(UPSTREAM_RELAY_URL ? { relay: relayLabel(UPSTREAM_RELAY_URL) } : {}),
           proxy: proxyState,
+          // Per-egress wire traffic and token accounting (usage.json). The
+          // phone entry here is the mobile-data cost of the bridge today.
+          ...(usageView ? { usage: usageView } : {}),
         },
         identity: {
           userAgent: idState.userAgent,
@@ -2065,6 +2149,34 @@ function handleRequest(req, res) {
     return res.end(cachedModelsPayload);
   }
 
+  // Anthropic Messages API. Relays through this bridge's own chat route, so the
+  // Anthropic path inherits the gate anchors, session minting, egress pool and
+  // self-healing retries instead of duplicating them.
+  if (req.method === "POST" && (pathname === "/v1/messages" || pathname === "/messages")) {
+    handleAnthropicMessages(req, res).catch((err) => {
+      if (res.headersSent) {
+        res.destroy();
+        return;
+      }
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ type: "error", error: { type: "api_error", message: err.message } }));
+    });
+    return;
+  }
+  if (
+    req.method === "POST" &&
+    (pathname === "/v1/messages/count_tokens" || pathname === "/messages/count_tokens")
+  ) {
+    handleCountTokens(req, res).catch((err) => {
+      if (res.headersSent) {
+        res.destroy();
+        return;
+      }
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ type: "error", error: { type: "api_error", message: err.message } }));
+    });
+    return;
+  }
   // Chat completions
   if (req.method === "POST" && (pathname === "/v1/chat/completions" || pathname === "/chat/completions")) {
     (async () => {
@@ -2118,9 +2230,7 @@ function handleRequest(req, res) {
         );
       }
 
-      const _authHeader = req.headers?.["authorization"] || req.headers?.["Authorization"] || "";
-      const keyed = !!_authHeader && !/^Bearer\s+public$/i.test(_authHeader);
-      const targetModel = normalizeModel(body.model, keyed);
+      const targetModel = normalizeModel(body.model);
       if (!targetModel) {
         res.writeHead(400, { "Content-Type": "application/json" });
         return res.end(
@@ -2140,8 +2250,7 @@ function handleRequest(req, res) {
       // zero can only fail upstream. Say that here — an upstream 401 ("no
       // session") sends the user hunting for a login that does not exist.
       const modelVerdict = identity.getCatalogVerdict(targetModel);
-      const paidWithKey = keyed && modelVerdict === "paid";
-      if (modelVerdict && modelVerdict !== "free" && !paidWithKey) {
+      if (modelVerdict && modelVerdict !== "free") {
         const isRetired = modelVerdict === "deprecated";
         res.writeHead(404, { "Content-Type": "application/json" });
         return res.end(
@@ -2183,7 +2292,7 @@ function handleRequest(req, res) {
       let useResponses = isResponsesModel(targetModel);
       const sessionId = getPersistentSessionId(req, body);
       let retryHeaders = null;
-      const upstreamHeaders = buildUpstreamHeaders(req, sessionId, targetModel, keyed);
+      const upstreamHeaders = buildUpstreamHeaders(req, sessionId);
 
       const abortController = new AbortController();
       let timedOut = false;
@@ -2320,23 +2429,59 @@ function handleRequest(req, res) {
         // shape were both accepted and only this IP's quota is gone, so the one
         // useful action is to spend the retry on a different IP instead of
         // replaying an identical request at an address upstream just refused.
-        // The cooldown is recorded either way, so the next request also moves.
+        //
+        // This walks the pool rather than failing over once. A single retry was
+        // not enough: two spent IPs at the front handed the client a 429 while
+        // the rest of the pool was healthy. The client should only see 429 when
+        // every enabled member has been refused in this request — at that point
+        // there is genuinely nothing left to try, and saying so is correct.
         if (!upstreamRes.ok && upstreamRes.status === 429) {
           const poolState = proxy.describe().pool;
           const canFailover = poolState && poolState.active && poolState.enabled > 1;
           recordEgressFailure(egressState, {
             reason: "allowance 429",
-            cooldownMs: poolState ? poolState.cooldownMs * 4 : null,
+            cooldownMs: retryAfterMs(upstreamRes) ?? (poolState ? poolState.cooldownMs * 4 : null),
           });
+
           if (canFailover) {
-            const next = proxy.pick({ exclude: egressState.egressUrl });
-            if (next.url !== egressState.egressUrl) {
+            // Every egress already refused for *this* request. `pick()` skips
+            // cooling entries, but a just-recorded failure is cooling too, so
+            // this also prevents revisiting one. The cap guards a pool whose
+            // entries resolve to the same URL.
+            const tried = new Set();
+            if (egressState.egressUrl !== null && egressState.egressUrl !== undefined) {
+              tried.add(egressState.egressUrl);
+            }
+            const MAX = Math.max(2, poolState.enabled);
+
+            for (let attempt = 0; attempt < MAX; attempt += 1) {
+              // pick() excludes one entry, not a list. Pass the one we just
+              // refused; it is also in cooldown now, so this is redundant
+              // rather than load-bearing — which is the point.
+              const next = proxy.pick({ exclude: egressState.egressUrl });
+              // `cooling` means pick() found no ready candidate at all: every
+              // member is already parked by an earlier request. Walking the pool
+              // then spends one request per entry on an upstream that has
+              // already refused each of them, which is exactly how an egress
+              // that served nothing today still accumulates failures and gets
+              // stamped with a fresh 429. Nothing healthy is left to try, so
+              // fail fast and let Retry-After carry the wait instead.
+              if (next.cooling) {
+                console.warn(
+                  `[opencode-free-bridge] Pool has no ready egress (${poolState.enabled} enabled, all cooling); not walking it`
+                );
+                break;
+              }
+              const key = next.url === null || next.url === undefined ? "@direct" : next.url;
+              if (tried.has(key)) break;
+              tried.add(key);
+
               console.warn(
                 `[opencode-free-bridge] Egress ${
                   proxy.displayHost(egressState.egressUrl) || "direct"
-                } is out of allowance (429); retrying through ${
+                } is out of allowance (429); trying ${
                   proxy.displayHost(next.url) || "direct"
-                }`
+                } (${tried.size}/${poolState.enabled})`
               );
               egressState.egress = next;
               egressState.egressUrl = next.url;
@@ -2347,14 +2492,21 @@ function handleRequest(req, res) {
                 signal: abortController.signal,
               }, egressState);
               consumedErrorText = null;
-              // The retry may have landed on a second spent IP. Record it too,
-              // or the next request would pick it again and learn the same thing.
-              if (upstreamRes.status === 429) {
-                recordEgressFailure(egressState, {
-                  reason: "allowance 429",
-                  cooldownMs: poolState.cooldownMs * 4,
-                });
-              }
+
+              if (upstreamRes.status !== 429) break;
+
+              // Still spent. Record with this response's own Retry-After so the
+              // entry leaves rotation for the real reset window.
+              recordEgressFailure(egressState, {
+                reason: "allowance 429",
+                cooldownMs: retryAfterMs(upstreamRes) ?? poolState.cooldownMs * 4,
+              });
+            }
+
+            if (upstreamRes.status === 429) {
+              console.warn(
+                `[opencode-free-bridge] All ${tried.size} pooled egress(es) refused this request; exhausted the pool, returning 429`
+              );
             }
           }
         }
@@ -2372,7 +2524,7 @@ function handleRequest(req, res) {
             await upstreamRes.text();
           } catch {}
           const retry5xxSid = regenerateSessionId(req, body, sessionId);
-          const retry5xxHeaders = buildUpstreamHeaders(req, retry5xxSid, targetModel, keyed);
+          const retry5xxHeaders = buildUpstreamHeaders(req, retry5xxSid);
           console.warn(
             `[opencode-free-bridge] Upstream returned ${first5xx}` +
               (firstLogId ? ` [x-opencode-log-id: ${firstLogId}]` : "") +
@@ -2435,7 +2587,7 @@ function handleRequest(req, res) {
             );
           }
 
-          if (keyed || !isFreeTierCliGateError(upstreamRes.status, errType, rawMsg)) {
+          if (!isFreeTierCliGateError(upstreamRes.status, errType, rawMsg)) {
             const upstreamLogId =
               typeof upstreamRes.headers?.get === "function"
                 ? upstreamRes.headers.get("x-opencode-log-id")
@@ -2468,6 +2620,20 @@ function handleRequest(req, res) {
             const errHeaders = { "Content-Type": "application/json" };
             if (upstreamLogId) errHeaders["X-OpenCode-Log-Id"] = upstreamLogId;
             if (upstreamRes.status >= 500) errHeaders["X-OpenCode-Gate"] = "upstream-error";
+            // A capacity 429 reaches this passthrough, not the gate branch:
+            // isFreeTierCliGateError() only claims 403/401/426, so FreeUsageLimitError
+            // with status 429 falls through to here. Without the real Retry-After
+            // the client retries immediately into a pool that is still spent, and
+            // every retry re-stamps the entries. Upstream sends the free-allowance
+            // reset as an absolute boundary (measured: ~46ks, i.e. next midnight
+            // UTC), so passing it through is what makes the wait truthful.
+            if (upstreamRes.status === 429) {
+              const upstreamRetryAfter = retryAfterMs(upstreamRes);
+              if (upstreamRetryAfter) {
+                errHeaders["Retry-After"] = String(Math.max(1, Math.ceil(upstreamRetryAfter / 1000)));
+              }
+              errHeaders["X-OpenCode-Gate"] = "ip-throttled";
+            }
             res.writeHead(upstreamRes.status, errHeaders);
             return res.end(
               JSON.stringify({
@@ -2519,7 +2685,7 @@ function handleRequest(req, res) {
             if (canFailover && egressState.egressUrl) {
               proxy.markFailure(egressState.egressUrl, {
                 reason: `gate ${gateStatus}`,
-                cooldownMs: gateStatus === 429 ? pooled.cooldownMs * 4 : null,
+                cooldownMs: gateStatus === 429 ? (retryAfterMs(upstreamRes) ?? pooled.cooldownMs * 4) : null,
               });
               const next = proxy.pick({ exclude: egressState.egressUrl });
               if (next.url && next.url !== egressState.egressUrl) {
@@ -2546,7 +2712,7 @@ function handleRequest(req, res) {
             // new URL — reusing the pre-refresh value would defeat the derivation.
             liveEndpoints = resolveEndpoints(targetModel);
             upstreamUrl = useResponses ? liveEndpoints.responsesUrl : liveEndpoints.chatUrl;
-            retryHeaders = buildUpstreamHeaders(req, retrySessionId, targetModel, keyed);
+            retryHeaders = buildUpstreamHeaders(req, retrySessionId);
             upstreamRes = await upstreamFetch(upstreamUrl, {
               method: "POST",
               headers: retryHeaders,
@@ -2641,7 +2807,7 @@ function handleRequest(req, res) {
             // fully separate from a shape problem.
             recordEgressFailure(egressState, {
               reason: capacity ? "allowance 429" : `gate ${retryStatus}`,
-              cooldownMs: capacity ? proxy.describe().pool.cooldownMs * 4 : null,
+              cooldownMs: capacity ? (retryAfterMs(upstreamRes) ?? proxy.describe().pool.cooldownMs * 4) : null,
             });
 
             // The gate answers the same `403 FreeTierError` for a blocked egress
@@ -3288,6 +3454,10 @@ if (require.main === module) {
   // IDENTITY does not: it is refreshed lazily from the request path (see
   // identity.ensureFresh), so an idle bridge makes no network calls at all.
   setInterval(discoverModels, DISCOVERY_TTL_MS).unref();
+  // Priority-failover recovery: probe one cooling entry per minute so the
+  // highest-priority egress (the renewable phone IP) returns to the top of the
+  // pool as soon as it answers again, instead of only after its cooldown.
+  setInterval(() => proxy.recoveryProbeTick().catch(() => {}), 60_000).unref();
 }
 
 module.exports = {
@@ -3349,6 +3519,7 @@ module.exports = {
   __getGateDiagnostic: () => lastGateDiagnostic,
   __getLastUpstreamError: () => lastUpstreamError,
   __auditGateShape: auditGateShape,
+  __retryAfterMs: retryAfterMs,
   gateSafeUserAgent,
   DISCOVERY_TTL_MS,
   CLI_VERSION_TTL_MS,

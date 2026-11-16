@@ -145,6 +145,85 @@ function compressText(text, stats, shape) {
   return out;
 }
 
+// --- System-prompt paragraph dedupe ---------------------------------------
+//
+// A client that inlines both a global and a project instruction file sends the
+// overlapping paragraph twice on every request, and a first request has no
+// history for any other saver to eat. Only *exact* duplicate paragraphs are
+// dropped, only when long enough to be boilerplate, and the result is never
+// allowed to grow or empty out — same fail-open contract as compressText.
+const MIN_DUP_PARAGRAPH = 80;
+
+function dedupeParagraphs(text, seen = new Set()) {
+  const parts = text.split(/\n\s*\n/);
+  if (parts.length < 2) return text;
+  const kept = [];
+  for (const part of parts) {
+    const key = part.trim();
+    if (key.length >= MIN_DUP_PARAGRAPH) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+    }
+    kept.push(part);
+  }
+  return kept.join("\n\n");
+}
+
+function rewriteSystemText(holder, key, stats, seen) {
+  const value = holder?.[key];
+  if (typeof value !== "string" || value.length < MIN_DUP_PARAGRAPH) return;
+  const out = dedupeParagraphs(value, seen);
+  if (out.length === 0 || out.length >= value.length) return;
+  holder[key] = out;
+  stats.bytesBefore += value.length;
+  stats.bytesAfter += out.length;
+}
+
+/**
+ * Drop exact duplicate paragraphs from every system instruction the body
+ * carries (Chat `system` messages, Responses `instructions`, Anthropic
+ * `system` string or blocks). Returns stats or null when nothing was saved.
+ */
+export function dedupeSystemText(body, enabled) {
+  if (!enabled || !body || typeof body !== "object") return null;
+  const stats = { bytesBefore: 0, bytesAfter: 0, hits: [] };
+  // One set for the whole request: a client that splits its instructions across
+  // several system messages (or Claude blocks) repeats itself across them.
+  const seen = new Set();
+  try {
+    rewriteSystemText(body, "instructions", stats, seen);
+    if (Array.isArray(body.system)) {
+      for (const block of body.system) {
+        if (block && typeof block.text === "string") rewriteSystemText(block, "text", stats, seen);
+      }
+    } else {
+      rewriteSystemText(body, "system", stats, seen);
+    }
+
+    const items = Array.isArray(body.messages) ? body.messages
+      : Array.isArray(body.input) ? body.input
+      : [];
+    for (const item of items) {
+      if (!item || (item.role !== "system" && item.role !== "developer")) continue;
+      if (typeof item.content === "string") {
+        rewriteSystemText(item, "content", stats, seen);
+        continue;
+      }
+      if (!Array.isArray(item.content)) continue;
+      for (const part of item.content) {
+        if (part && typeof part.text === "string") rewriteSystemText(part, "text", stats, seen);
+      }
+    }
+  } catch (e) {
+    console.warn("[RTK] dedupeSystemText error:", e.message);
+    return null;
+  }
+  const saved = stats.bytesBefore - stats.bytesAfter;
+  if (saved <= 0) return null;
+  stats.hits.push({ shape: "system", filter: "system-dedupe", saved });
+  return stats;
+}
+
 // Convenience: format a log line from stats
 export function formatRtkLog(stats) {
   if (!stats || !stats.hits || stats.hits.length === 0) return null;

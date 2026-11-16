@@ -27,7 +27,12 @@ import { takeRenamedToolNames } from "../utils/opencodeFingerprint.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { injectCustomPrompt } from "../rtk/customPrompt.js";
-import { compressMessages, formatRtkLog } from "../rtk/index.js";
+import { compressMessages, dedupeSystemText, formatRtkLog } from "../rtk/index.js";
+import { compactToolSchemas } from "../rtk/toolSchema.js";
+import { composePrompts } from "../rtk/composePrompt.js";
+import { injectSystemPrompt } from "../rtk/systemInject.js";
+import { CAVEMAN_PROMPTS } from "../rtk/cavemanPrompts.js";
+import { PONYTAIL_PROMPTS } from "../rtk/ponytailPrompt.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
 import { compressWithPxpipe } from "../rtk/pxpipe.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
@@ -66,7 +71,7 @@ export function stripContinuityFields(body) {
   return body;
 }
 
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerOverrides }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, rtkToolTrim, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, providerOverrides }) {
   const { provider, model } = modelInfo;
   const requestStartTime = Date.now();
   // Stable per-session color so all lines of one CLI conversation share a tag
@@ -303,16 +308,33 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   if (rtkStats?.hits?.length) xf.push(`RTK:${rtkStats.hits.length}`);
 
+  // Tool-schema trim: the one large block the output filters cannot reach on a
+  // first request, because there is no tool history yet. Opt-in — it edits the
+  // definitions themselves, so a deployment opts in knowingly.
+  const toolSchemaStats = compactToolSchemas(translatedBody, tokenSaverEnabled && rtkToolTrim);
+  if (toolSchemaStats?.hits?.length) xf.push(
+    `TOOLTRIM:${toolSchemaStats.bytesBefore - toolSchemaStats.bytesAfter}B`
+  );
+
+  // System-prompt dedupe: global + project instruction files repeat paragraphs
+  const sysStats = dedupeSystemText(translatedBody, tokenSaverEnabled && rtkEnabled);
+  if (sysStats) xf.push(`SYSDEDUP:${sysStats.bytesBefore - sysStats.bytesAfter}B`);
+
   // Caveman: inject terse-style system prompt
-  if (tokenSaverEnabled && cavemanEnabled && cavemanLevel) {
-    injectCaveman(translatedBody, finalFormat, cavemanLevel);
-    xf.push(`CAVEMAN:${cavemanLevel}`);
-  }
+  const cavemanPrompt = tokenSaverEnabled && cavemanEnabled && cavemanLevel ? CAVEMAN_PROMPTS[cavemanLevel] : null;
+  if (cavemanPrompt) xf.push(`CAVEMAN:${cavemanLevel}`);
 
   // Ponytail: inject lazy-senior-dev system prompt
-  if (tokenSaverEnabled && ponytailEnabled && ponytailLevel) {
+  const ponytailPrompt = tokenSaverEnabled && ponytailEnabled && ponytailLevel ? PONYTAIL_PROMPTS[ponytailLevel] : null;
+  if (ponytailPrompt) xf.push(`PONYTAIL:${ponytailLevel}`);
+
+  // Both on: compose them, so the paragraphs they share are sent once.
+  if (cavemanPrompt && ponytailPrompt) {
+    injectSystemPrompt(translatedBody, finalFormat, composePrompts([cavemanPrompt, ponytailPrompt]));
+  } else if (cavemanPrompt) {
+    injectCaveman(translatedBody, finalFormat, cavemanLevel);
+  } else if (ponytailPrompt) {
     injectPonytail(translatedBody, finalFormat, ponytailLevel);
-    xf.push(`PONYTAIL:${ponytailLevel}`);
   }
 
   // Custom prompt: user-authored instruction, independent of the savers above

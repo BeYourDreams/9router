@@ -12,6 +12,7 @@ import {
 
 export default function TokenSaverClient() {
   const [rtkEnabled, setRtkEnabledState] = useState(true);
+  const [rtkToolTrim, setRtkToolTrim] = useState(false);
   const [headroomEnabled, setHeadroomEnabled] = useState(false);
   const [headroomUrl, setHeadroomUrl] = useState("http://localhost:8787");
   const [headroomTimeoutMs, setHeadroomTimeoutMs] = useState(3000);
@@ -48,7 +49,7 @@ export default function TokenSaverClient() {
   const [customPromptEnabled, setCustomPromptEnabled] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
   const [pxpipeEnabled, setPxpipeEnabled] = useState(false);
-  const [pxpipeMinChars, setPxpipeMinChars] = useState(25000);
+  const [pxpipeMinChars, setPxpipeMinChars] = useState(8000);
   const [pxpipeStatus, setPxpipeStatus] = useState({
     installed: false,
     installing: false,
@@ -105,6 +106,11 @@ export default function TokenSaverClient() {
     } catch (error) {
       console.log("Error updating rtkEnabled:", error);
     }
+  };
+
+  const handleRtkToolTrim = (value) => {
+    setRtkToolTrim(value);
+    patchSetting({ rtkToolTrim: value });
   };
 
   const handleCavemanEnabled = (value) => {
@@ -413,7 +419,7 @@ export default function TokenSaverClient() {
   };
 
   const handlePxpipeMinCharsBlur = () => {
-    const next = Math.max(0, Number(pxpipeMinChars) || 25000);
+    const next = Math.max(0, Number(pxpipeMinChars) || 8000);
     setPxpipeMinChars(next);
     patchSetting({ pxpipeMinChars: next });
   };
@@ -432,6 +438,7 @@ export default function TokenSaverClient() {
         if (res.ok) {
           const data = await res.json();
           setRtkEnabledState(data.rtkEnabled !== false);
+          setRtkToolTrim(data.rtkToolTrim === true);
           setHeadroomEnabled(!!data.headroomEnabled);
           setHeadroomUrl(data.headroomUrl || "http://localhost:8787");
           if (typeof data.headroomTimeoutMs === "number") setHeadroomTimeoutMs(data.headroomTimeoutMs);
@@ -517,6 +524,18 @@ export default function TokenSaverClient() {
           <Toggle
             checked={rtkEnabled}
             onChange={() => handleRtkEnabled(!rtkEnabled)}
+          />
+        </div>
+        <div className="flex items-center justify-between py-4 border-b border-border gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Trim tool definitions</p>
+            <p className="text-sm text-text-muted">
+              Shortens tool descriptions, drops $schema/examples. First request only payload this can reach.
+            </p>
+          </div>
+          <Toggle
+            checked={rtkToolTrim}
+            onChange={() => handleRtkToolTrim(!rtkToolTrim)}
           />
         </div>
         <div className="flex items-center justify-between py-4 gap-4 flex-wrap">
@@ -1037,7 +1056,7 @@ export default function TokenSaverClient() {
               value={String(pxpipeMinChars)}
               onChange={(e) => setPxpipeMinChars(e.target.value)}
               onBlur={handlePxpipeMinCharsBlur}
-              placeholder="25000"
+              placeholder="8000"
               className="font-mono text-sm"
             />
             <p className="text-xs text-text-muted">
