@@ -74,15 +74,11 @@ export function normalizeNousModels(payload) {
  * sorted by contextLength descending so the largest windows appear first.
  */
 export function normalizeNousFreeModels(payload) {
-  const freeModels = getRawModels(payload).filter((model) => {
-    const contextLength = asPositiveInteger(
-      model?.context_length ?? model?.top_provider?.context_length,
-    );
-    return isTextCapable(model)
-      && isZeroPrice(model?.pricing?.prompt)
-      && isZeroPrice(model?.pricing?.completion)
-      && contextLength >= 200000;
-  });
+  const freeModels = getRawModels(payload).filter((model) =>
+    isTextCapable(model)
+    && isZeroPrice(model?.pricing?.prompt)
+    && isZeroPrice(model?.pricing?.completion)
+  );
 
   return normalizeNousModels(freeModels).sort(
     (a, b) => (b.contextLength || 0) - (a.contextLength || 0),

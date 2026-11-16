@@ -207,7 +207,7 @@ describe("Nous Research provider", () => {
     ]);
   });
 
-  it("suggests only zero-cost text models with at least 200K context", () => {
+  it("suggests zero-cost text models from live catalog", () => {
     const models = normalizeNousFreeModels([
       {
         id: "vendor/free-chat",
@@ -236,11 +236,18 @@ describe("Nous Research provider", () => {
       },
     ]);
 
-    expect(models).toEqual([{
-      id: "vendor/free-chat",
-      name: "Free Chat",
-      contextLength: 262144,
-    }]);
+    expect(models).toEqual([
+      {
+        id: "vendor/free-chat",
+        name: "Free Chat",
+        contextLength: 262144,
+      },
+      {
+        id: "vendor/free-short-chat",
+        name: "vendor/free-short-chat",
+        contextLength: 131072,
+      },
+    ]);
   });
 
   it("supports OAuth Device Code exchange and agent-key minting with fallback", async () => {

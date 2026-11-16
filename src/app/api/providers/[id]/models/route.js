@@ -264,8 +264,20 @@ const PROVIDER_MODELS_CONFIG = {
   openai: createOpenAIModelsConfig("https://api.openai.com/v1/models"),
   openrouter: createOpenAIModelsConfig("https://openrouter.ai/api/v1/models"),
   nous: {
-    ...createOpenAIModelsConfig(NOUS_MODELS_URL),
-    parseResponse: normalizeRoutedNousModels,
+    customResolver: async (connection) => {
+      const token = connection.apiKey || connection.accessToken || connection.providerSpecificData?.copilotToken;
+      if (!token) return { error: "No valid token found", status: 401 };
+      const response = await fetch(NOUS_MODELS_URL, {
+        method: "GET",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        return { error: `Failed to fetch Nous models: ${response.status} ${errorText}`.trim(), status: response.status };
+      }
+      const data = await response.json();
+      return { models: normalizeRoutedNousModels(data) };
+    },
   },
   // CommandCode's catalog URL needs no auth, but the route's token guard above
   // still requires a configured connection, so an empty key cannot enumerate it.
