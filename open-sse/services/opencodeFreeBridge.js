@@ -28,12 +28,27 @@ function bunCandidates() {
   ].filter(Boolean);
 }
 
+// npm's global prefix is often not %APPDATA%\npm, so the candidates above miss
+// an otherwise-perfect install. Walk PATH and probe the npm module layout before
+// the bare <dir>\bun.exe copy npm leaves at the prefix root (that copy can lag a
+// major version behind — the gate's ClientHello is version-sensitive).
+function bunFromPath() {
+  const dirs = String(process.env.PATH || "").split(";").filter(Boolean);
+  for (const d of dirs) {
+    for (const rel of [path.join("node_modules", "bun", "bin", "bun.exe"), "bun.exe"]) {
+      const candidate = path.join(d, rel);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
 function resolveBunBinSync() {
   for (const c of bunCandidates()) {
     if (c === "bun") return c; // non-win: let spawn resolve via PATH
     if (existsSync(c)) return c;
   }
-  return null;
+  return bunFromPath();
 }
 
 function bunRuns(bin) {
