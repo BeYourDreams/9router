@@ -667,6 +667,16 @@ export default function ModelSelectModal({
     else if (onDeselect) items.forEach((m) => onDeselect(m));
   };
 
+  // One-click removal of every selected entry the list can no longer render a chip
+  // for (the "Not in list" section). Mirrors handleRemoveMissing, which does the
+  // same for entries the catalog cannot claim at all.
+  const handleRemoveAllUnlisted = () => {
+    if (unlistedAddedValues.length === 0) return;
+    const items = unlistedAddedValues.map((v) => ({ value: v, name: v }));
+    if (onDeselectBatch) onDeselectBatch(items);
+    else if (onDeselect) items.forEach((m) => onDeselect(m));
+  };
+
   const handleSelect = (model) => {
     const value = model?.value || model?.name || model;
     const isAdded = addedModelValues.includes(value);
@@ -843,6 +853,14 @@ export default function ModelSelectModal({
               <span className="text-xs font-medium text-amber-500">Not in list</span>
               <span className="text-[10px] text-text-muted">({unlistedAddedValues.length})</span>
               <span className="text-[10px] text-text-muted">- selected, no longer offered: click to remove</span>
+              <button
+                type="button"
+                onClick={handleRemoveAllUnlisted}
+                title={`Remove all selected models not in list:\n${unlistedAddedValues.slice(0, 8).join(", ")}${unlistedAddedValues.length > 8 ? " …" : ""}`}
+                className="ml-auto px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 transition-colors cursor-pointer"
+              >
+                Remove All ({unlistedAddedValues.length})
+              </button>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {unlistedAddedValues.map((value) => (
