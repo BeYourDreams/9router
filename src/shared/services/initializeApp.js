@@ -135,6 +135,12 @@ async function runHeavyStartup() {
       .catch((e) => console.log("[CodeBuddySignin] scheduler start failed:", e.message));
   }
 
+  if (hasQoderAutoSigninEnabled(settings)) {
+    import("@/shared/services/qoderAutoSignin")
+      .then(({ startQoderAutoSignin }) => startQoderAutoSignin())
+      .catch((e) => console.log("[QoderCheckin] scheduler start failed:", e.message));
+  }
+
   if (hasModelScopeAutoSigninEnabled(settings)) {
     import("@/shared/services/modelscopeAutoSignin")
       .then(({ startModelScopeAutoSignin }) => startModelScopeAutoSignin())
@@ -169,6 +175,14 @@ function hasMinimaxAutoSigninEnabled(settings) {
 // at least one CodeBuddy connection opted in. Respects a global off switch.
 function hasCodeBuddyAutoSigninEnabled(settings) {
   const cfg = settings?.codebuddyAutoSignin;
+  if (!cfg || cfg.enabled === false) return false;
+  return Object.values(cfg.connections || {}).some(Boolean);
+}
+
+// Cheap local check: keep the Qoder daily credit-claim scheduler unloaded
+// unless at least one Qoder connection opted in. Respects a global off switch.
+function hasQoderAutoSigninEnabled(settings) {
+  const cfg = settings?.qoderAutoSignin;
   if (!cfg || cfg.enabled === false) return false;
   return Object.values(cfg.connections || {}).some(Boolean);
 }

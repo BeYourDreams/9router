@@ -103,6 +103,17 @@ export const CODEBUDDY_AUTOSIGNIN_CONFIG = {
 // Magicube call per local calendar day per opted-in account. The daily reward
 // (200 基础 + 50 绑定阿里云, 当日有效) is granted on login, so the call *is* the
 // claim — see open-sse/services/modelscopeMagicube.js for the endpoints.
+// Qoder daily credit claim (每日签到领 100 Credits): the IDE's growth-page
+// campaign drops a claimable daily campaign per account (100 credits, valid 30
+// days, resets 10:00 UTC+8) — see open-sse/services/qoderCheckin.js.
+export const QODER_AUTOSIGNIN_CONFIG = {
+  settingsKey: "qoderAutoSignin",       // { enabled, connections: { [id]: true } }
+  tickIntervalMs: 60 * 60 * 1000,        // hourly tick; the per-day gate dedupes claims
+  dayAnchorLocalHour: 0,                 // rollover at local midnight
+  failureCooldownMs: 30 * 60 * 1000,     // do not hammer after a failed claim
+  providers: ["qoder", "qoder-cn"],
+};
+
 export const MODELSCOPE_AUTOSIGNIN_CONFIG = {
   settingsKey: "modelscopeAutoSignin",  // { enabled, connections: { [id]: true } }
   tickIntervalMs: 60 * 60 * 1000,        // hourly tick; the per-day gate dedupes logins
@@ -120,6 +131,7 @@ export const AUTO_SIGNIN_CONFIGS = [
   MINIMAX_AUTOSIGNIN_CONFIG,
   CODEBUDDY_AUTOSIGNIN_CONFIG,
   MODELSCOPE_AUTOSIGNIN_CONFIG,
+  QODER_AUTOSIGNIN_CONFIG,
 ];
 
 // Which auth types can actually be checked in, per provider. MiniMax Code
@@ -132,6 +144,10 @@ export const AUTO_SIGNIN_AUTH_TYPES = {
   "codebuddy-cn": ["oauth", "apikey"],
   "codebuddy-intl": ["oauth", "apikey"],
   modelscope: ["apikey"],
+  // Qoder's claim needs the device-flow OAuth token (a PAT cannot read the
+  // campaign list).
+  qoder: ["oauth"],
+  "qoder-cn": ["oauth"],
 };
 
 // Daily check-in is ON for newly added accounts: a fresh MiniMax Code /

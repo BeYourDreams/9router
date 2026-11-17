@@ -67,6 +67,25 @@ describe("ModelScope usage rows", () => {
   it("explains an empty answer instead of rendering nothing", () => {
     expect(buildModelScopeUsage({}).message).toMatch(/no Magicube data/);
   });
+
+  it("excludes the Aliyun bonus an unbound account can never earn", () => {
+    const unbound = { dailyRules: [
+      { key: "daily_active", amount: 200, dailyCap: 1, todayUsed: 1, todayEarned: 200, bound: true },
+      { key: "aliyun_bindlogin", amount: 50, dailyCap: 1, todayUsed: 0, todayEarned: 0, bound: false },
+    ], creditedToday: true, todayEarned: 200 };
+    const { quotas, plan } = buildModelScopeUsage({ balance: { total: 177, available: 177, frozen: 0 }, rules: unbound });
+    expect(quotas["今日魔粒"]).toMatchObject({ total: 200, used: 200, remainingPercentage: 0 });
+    expect(quotas["今日魔粒"].message).toBeUndefined();
+    expect(plan).toBe("魔搭 · 免费 · 绑阿里云 +50/日");
+  });
+
+  it("does not promise a payout to an account without a verified email", () => {
+    const noEmail = { dailyRules: [
+      { key: "daily_active", amount: 200, dailyCap: 1, todayUsed: 0, todayEarned: 0, bound: true },
+    ], creditedToday: false, todayEarned: 0, emailVerified: false };
+    const { quotas } = buildModelScopeUsage({ balance: { total: 0, available: 0, frozen: 0 }, rules: noEmail });
+    expect(quotas["今日魔粒"].message).toMatch(/需先完成邮箱验证/);
+  });
 });
 
 describe("getModelScopeUsage", () => {

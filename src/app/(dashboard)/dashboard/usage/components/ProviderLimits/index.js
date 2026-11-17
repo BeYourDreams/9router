@@ -170,6 +170,7 @@ export default function ProviderLimits() {
   const [minimaxSigninCfg, setMinimaxSigninCfg] = useState({});
   const [codebuddySigninCfg, setCodebuddySigninCfg] = useState({});
   const [modelscopeSigninCfg, setModelscopeSigninCfg] = useState({});
+  const [qoderSigninCfg, setQoderSigninCfg] = useState({});
   const [signinSettings, setSigninSettings] = useState({});
   // Server-computed roll-up for the master switch; null until first read.
   const [autoSigninState, setAutoSigninState] = useState(null);
@@ -622,10 +623,12 @@ export default function ProviderLimits() {
         setMinimaxSigninCfg(s?.minimaxAutoSignin || {});
         setCodebuddySigninCfg(s?.codebuddyAutoSignin || {});
         setModelscopeSigninCfg(s?.modelscopeAutoSignin || {});
+        setQoderSigninCfg(s?.qoderAutoSignin || {});
         setSigninSettings({
           minimaxAutoSignin: s?.minimaxAutoSignin || {},
           codebuddyAutoSignin: s?.codebuddyAutoSignin || {},
           modelscopeAutoSignin: s?.modelscopeAutoSignin || {},
+          qoderAutoSignin: s?.qoderAutoSignin || {},
         });
         setQuotaVisibility(s?.quotaVisibility || {});
       })
@@ -743,6 +746,26 @@ export default function ProviderLimits() {
     }
   }, [modelscopeSigninCfg, refreshAutoSigninState]);
 
+  const toggleQoderAutoSignin = useCallback(async (connectionId) => {
+    const previous = qoderSigninCfg;
+    const connections = { ...(qoderSigninCfg.connections || {}) };
+    connections[connectionId] = !connections[connectionId];
+    const nextCfg = { ...qoderSigninCfg, connections };
+    setQoderSigninCfg(nextCfg);
+    setSigninSettings((prev) => ({ ...prev, qoderAutoSignin: nextCfg }));
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ qoderAutoSignin: nextCfg }),
+      });
+      if (res.ok) refreshAutoSigninState();
+    } catch {
+      setQoderSigninCfg(previous);
+      setSigninSettings((prev) => ({ ...prev, qoderAutoSignin: previous }));
+    }
+  }, [qoderSigninCfg, refreshAutoSigninState]);
+
   // Master switch: turn daily check-in on (or off) for every eligible connection
   // of every family. The fan-out happens server-side (PUT /api/settings/auto-signin)
   // NOTE: these must be declared before toggleAllAutoSignin — its useCallback dep
@@ -775,10 +798,12 @@ export default function ProviderLimits() {
         setMinimaxSigninCfg(s?.minimaxAutoSignin || {});
         setCodebuddySigninCfg(s?.codebuddyAutoSignin || {});
         setModelscopeSigninCfg(s?.modelscopeAutoSignin || {});
+        setQoderSigninCfg(s?.qoderAutoSignin || {});
         setSigninSettings({
           minimaxAutoSignin: s?.minimaxAutoSignin || {},
           codebuddyAutoSignin: s?.codebuddyAutoSignin || {},
           modelscopeAutoSignin: s?.modelscopeAutoSignin || {},
+          qoderAutoSignin: s?.qoderAutoSignin || {},
         });
       }
     } catch {
@@ -1495,6 +1520,26 @@ export default function ProviderLimits() {
                             type="button"
                             onClick={() => toggleCodebuddyAutoSignin(conn.id)}
                             aria-label="Toggle CodeBuddy daily check-in"
+                            aria-pressed={on}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${on ? "text-primary" : "text-text-muted"}`}
+                          >
+                            <span className="material-symbols-outlined text-[18px]">event_available</span>
+                          </button>
+                        </Tooltip>
+                      );
+                    })()}
+                    {(getAutoSigninConfigForProvider(conn.provider)?.settingsKey === "qoderAutoSignin")
+                      && isAutoSigninEligible(conn) && (() => {
+                      const on = signinSettings.qoderAutoSignin?.connections?.[conn.id] === true;
+                      const tooltipText = on
+                        ? "Daily claim is on. The daily Credits are claimed automatically once per day. Click to turn off."
+                        : "Daily claim (每日签到领 Credits): claim the daily 100 Credits once per day. Click to turn on.";
+                      return (
+                        <Tooltip text={tooltipText}>
+                          <button
+                            type="button"
+                            onClick={() => toggleQoderAutoSignin(conn.id)}
+                            aria-label="Toggle Qoder daily credit claim"
                             aria-pressed={on}
                             className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${on ? "text-primary" : "text-text-muted"}`}
                           >

@@ -126,6 +126,15 @@ export async function PATCH(request) {
         .catch((error) => console.warn("[CodeBuddySignin] settings update failed:", error.message));
     }
 
+    if (Object.prototype.hasOwnProperty.call(body, "qoderAutoSignin")) {
+      // Load / unload the Qoder daily credit-claim scheduler to match the opt-in set.
+      import("@/shared/services/qoderAutoSignin")
+        .then(({ configureQoderAutoSignin }) => {
+          configureQoderAutoSignin(settings);
+        })
+        .catch((error) => console.warn("[QoderCheckin] settings update failed:", error.message));
+    }
+
     if (Object.prototype.hasOwnProperty.call(body, "modelscopeAutoSignin")) {
       // Load / unload the ModelScope daily auto-login scheduler to match the new opt-in set.
       import("@/shared/services/modelscopeAutoSignin")

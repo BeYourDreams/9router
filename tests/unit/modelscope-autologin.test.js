@@ -33,7 +33,8 @@ const RULES_PARTIAL = {
   success: true,
   data: [
     { rule_key: "daily_active", amount: 200, daily_cap: 1, today_used: 1, today_remain: 0, today_earned_amount: 200 },
-    { rule_key: "aliyun_bindlogin", amount: 50, daily_cap: 1, today_used: 0, today_remain: 1, today_earned_amount: 0 },
+    // Bound to Aliyun (earned it before), just not claimed today.
+    { rule_key: "aliyun_bindlogin", amount: 50, daily_cap: 1, today_used: 0, today_remain: 1, today_earned_amount: 0, earned_amount: 50 },
   ],
 };
 
@@ -65,7 +66,7 @@ describe("ModelScope earn-rules parsing", () => {
   });
 
   it("handles an empty rules list without throwing", () => {
-    expect(parseEarnRules({ success: true, data: [] })).toEqual({ dailyRules: [], creditedToday: false, todayEarned: 0 });
+    expect(parseEarnRules({ success: true, data: [] })).toEqual({ dailyRules: [], creditedToday: false, todayEarned: 0, emailVerified: true });
   });
 
   it("reads the balance fields", () => {

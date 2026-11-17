@@ -62,6 +62,11 @@ export async function PUT(request) {
         .then(({ configureCodeBuddyAutoSignin }) => configureCodeBuddyAutoSignin(saved))
         .catch((e) => console.warn("[CodeBuddySignin] bulk configure failed:", e.message));
     }
+    if (patch.qoderAutoSignin) {
+      import("@/shared/services/qoderAutoSignin")
+        .then(({ configureQoderAutoSignin }) => configureQoderAutoSignin(saved))
+        .catch((e) => console.warn("[QoderCheckin] bulk configure failed:", e.message));
+    }
     if (patch.modelscopeAutoSignin) {
       import("@/shared/services/modelscopeAutoSignin")
         .then(({ configureModelScopeAutoSignin }) => configureModelScopeAutoSignin(saved))

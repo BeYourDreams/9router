@@ -32,6 +32,8 @@ export const EARN_RULES_PATH = "/v1/magicubes/earn/rules";
 
 // The rules whose payout is the daily login itself.
 export const DAILY_RULE_KEYS = ["daily_active", "aliyun_bindlogin"];
+// 绑定增额: 50 魔粒/日, only for accounts bound to an Aliyun account.
+const ALIYUN_RULE_KEY = "aliyun_bindlogin";
 
 const obj = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : undefined);
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
@@ -95,21 +97,42 @@ export function parseEarnRules(body) {
   const rules = Array.isArray(body?.data) ? body.data : [];
   const dailyRules = rules
     .filter((r) => obj(r) && DAILY_RULE_KEYS.includes(r.rule_key))
-    .map((r) => ({
-      key: r.rule_key,
-      title: r.title,
-      amount: num(r.amount) ?? 0,
-      dailyCap: num(r.daily_cap) ?? 0,
-      todayUsed: num(r.today_used) ?? 0,
-      todayRemain: num(r.today_remain) ?? 0,
-      todayEarned: num(r.today_earned_amount) ?? 0,
-      totalEarned: num(r.earned_amount) ?? 0,
-    }));
+    .map((r) => {
+      const amount = num(r.amount) ?? 0;
+      const dailyCap = num(r.daily_cap) ?? 0;
+      const todayUsed = num(r.today_used) ?? 0;
+      const todayEarned = num(r.today_earned_amount) ?? 0;
+      const totalEarned = num(r.earned_amount) ?? 0;
+      return {
+        key: r.rule_key,
+        title: r.title,
+        amount,
+        dailyCap,
+        todayUsed,
+        todayRemain: num(r.today_remain) ?? 0,
+        todayEarned,
+        totalEarned,
+        // The 绑定增额 (50/日) only exists for accounts bound to Aliyun, but
+        // ModelScope lists the rule for everyone — an unbound account shows
+        // today_used 0 forever. "Bound" = the account earned it at least once.
+        bound: r.rule_key !== ALIYUN_RULE_KEY
+          || todayEarned > 0 || totalEarned > 0 || todayUsed >= dailyCap,
+      };
+    });
 
-  const creditedToday = dailyRules.length > 0
-    && dailyRules.every((r) => r.dailyCap > 0 && r.todayUsed >= r.dailyCap);
-  const todayEarned = dailyRules.reduce((sum, r) => sum + r.todayEarned, 0);
-  return { dailyRules, creditedToday, todayEarned };
+  // An unbound Aliyun bonus is not part of today's automatic payout: it can
+  // never be granted by logging in, so it must not keep the day "unclaimed".
+  // 魔粒 requires a verified email (modelscope.cn/docs/magicube/intro:
+  // "魔粒使用前置要求：完善个人信息，包括提供验证通过的个人邮箱"). An account
+  // without it earns nothing, so the row must not promise a daily payout.
+  const emailRule = rules.find((r) => obj(r) && r.rule_key === "infocomplement_email_verification");
+  const emailVerified = emailRule ? (num(emailRule.earned_amount) ?? 0) > 0 : true;
+
+  const earnable = dailyRules.filter((r) => r.bound !== false);
+  const creditedToday = earnable.length > 0
+    && earnable.every((r) => r.dailyCap > 0 && r.todayUsed >= r.dailyCap);
+  const todayEarned = earnable.reduce((sum, r) => sum + r.todayEarned, 0);
+  return { dailyRules, creditedToday, todayEarned, emailVerified };
 }
 
 /** { total, available, frozen } or null when the reply has no balance fields. */
@@ -144,10 +167,12 @@ export async function runModelScopeDailyLogin(connection, proxyOptions = null) {
 
   try {
     const base = magicubeBase(connection);
-    const [balanceBody, rulesBody] = await Promise.all([
-      callMagicube(token, BALANCE_PATH, proxyOptions, base),
-      callMagicube(token, EARN_RULES_PATH, proxyOptions, base),
-    ]);
+    // Sequential on purpose: the daily reward is applied by the first
+    // authenticated call of the day, so the rules must be read *after* it —
+    // parallel reads report the pre-grant state ("未领取 200 魔粒" for an
+    // account that was just credited).
+    const balanceBody = await callMagicube(token, BALANCE_PATH, proxyOptions, base);
+    const rulesBody = await callMagicube(token, EARN_RULES_PATH, proxyOptions, base);
 
     const balance = parseBalance(balanceBody);
     const { dailyRules, creditedToday, todayEarned } = parseEarnRules(rulesBody);
@@ -210,7 +235,10 @@ export function buildModelScopeUsage({ balance, rules, earnedToday, balanceCents
     };
   }
 
-  const daily = Array.isArray(rules?.dailyRules) ? rules.dailyRules : [];
+  const allDaily = Array.isArray(rules?.dailyRules) ? rules.dailyRules : [];
+  // Unbound accounts are excluded: their 绑定增额 cannot be earned by logging in.
+  const daily = allDaily.filter((r) => r.bound !== false);
+  const unboundAliyun = allDaily.find((r) => r.key === ALIYUN_RULE_KEY && r.bound === false);
   const todayCap = daily.reduce((sum, r) => sum + (r.dailyCap > 0 ? r.amount : 0), 0);
   const todayDone = daily.reduce(
     (sum, r) => sum + (r.dailyCap > 0 ? Math.min(r.todayUsed, r.dailyCap) * r.amount : 0),
@@ -230,7 +258,15 @@ export function buildModelScopeUsage({ balance, rules, earnedToday, balanceCents
       // never claims a reset instant the server did not report.
       resetAt: null,
       // Uncredited remainder means the login for today has not landed yet.
-      ...(todayDone < todayCap ? { message: `未领取 ${left} 魔粒 — 每日登录后自动到账` } : {}),
+      ...(todayDone < todayCap
+        ? {
+          message: rules?.emailVerified === false
+            ? `未领取 ${left} 魔粒 — 需先完成邮箱验证，每日登录后自动到账`
+            : unboundAliyun
+              ? `未领取 ${left} 魔粒 — 每日登录后自动到账（绑定阿里云账号每日再 +${unboundAliyun.amount} 魔粒）`
+              : `未领取 ${left} 魔粒 — 每日登录后自动到账`,
+        }
+        : {}),
     };
     if (todaySpend !== todayDone) {
       quotas["今日魔粒"].used = todaySpend > todayDone ? todaySpend : todayDone;
@@ -253,7 +289,11 @@ export function buildModelScopeUsage({ balance, rules, earnedToday, balanceCents
 
   return {
     quotas,
-    plan: daily.some((r) => r.key === "aliyun_bindlogin") ? "魔搭 · 已绑定阿里云" : "魔搭 · 免费",
+    plan: daily.some((r) => r.key === ALIYUN_RULE_KEY)
+      ? "魔搭 · 已绑定阿里云"
+      : unboundAliyun
+        ? `魔搭 · 免费 · 绑阿里云 +${unboundAliyun.amount}/日`
+        : "魔搭 · 免费",
     ...(balance ? { user: `余额 ${balance.total} 魔粒` } : {}),
     ...(balanceCents ? { message: balanceCents } : {}),
   };
@@ -270,10 +310,12 @@ export async function getModelScopeUsage(connection, proxyOptions = null) {
 
   try {
     const base = magicubeBase(connection);
-    const [balanceBody, rulesBody] = await Promise.all([
-      callMagicube(token, BALANCE_PATH, proxyOptions, base),
-      callMagicube(token, EARN_RULES_PATH, proxyOptions, base),
-    ]);
+    // Sequential on purpose: the daily reward is applied by the first
+    // authenticated call of the day, so the rules must be read *after* it —
+    // parallel reads report the pre-grant state ("未领取 200 魔粒" for an
+    // account that was just credited).
+    const balanceBody = await callMagicube(token, BALANCE_PATH, proxyOptions, base);
+    const rulesBody = await callMagicube(token, EARN_RULES_PATH, proxyOptions, base);
     const balance = parseBalance(balanceBody);
     const rules = parseEarnRules(rulesBody);
     const conn = connection || {};

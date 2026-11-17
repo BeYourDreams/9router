@@ -117,6 +117,11 @@ export async function backfillDefaultOptIns(deps) {
         .then(({ configureCodeBuddyAutoSignin }) => configureCodeBuddyAutoSignin(saved))
         .catch(() => {});
     }
+    if (patch.qoderAutoSignin) {
+      import("@/shared/services/qoderAutoSignin")
+        .then(({ configureQoderAutoSignin }) => configureQoderAutoSignin(saved))
+        .catch(() => {});
+    }
     if (patch.modelscopeAutoSignin) {
       import("@/shared/services/modelscopeAutoSignin")
         .then(({ configureModelScopeAutoSignin }) => configureModelScopeAutoSignin(saved))
