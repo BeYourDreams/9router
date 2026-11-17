@@ -1335,25 +1335,6 @@ exports[`GOLDEN buildHeaders (default executor providers) > morph → headers (a
 }
 `;
 
-exports[`GOLDEN buildHeaders (default executor providers) > mossai → headers (apiKey / oauth) 1`] = `
-{
-  "apiKey": {
-    "Accept": "text/event-stream",
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
-  },
-  "nonStream": {
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
-  },
-  "oauth": {
-    "Accept": "text/event-stream",
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
-  },
-}
-`;
-
 exports[`GOLDEN buildHeaders (default executor providers) > muse → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -2489,13 +2470,6 @@ exports[`GOLDEN buildUrl (default executor providers) > morph → url (stream + 
 {
   "nonStream": "https://api.morphllm.com/v1/chat/completions",
   "stream": "https://api.morphllm.com/v1/chat/completions",
-}
-`;
-
-exports[`GOLDEN buildUrl (default executor providers) > mossai → url (stream + non-stream) 1`] = `
-{
-  "nonStream": "https://mossai.cc/api/open-platform/v1/chat/completions",
-  "stream": "https://mossai.cc/api/open-platform/v1/chat/completions",
 }
 `;
 

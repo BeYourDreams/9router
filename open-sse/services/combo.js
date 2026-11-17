@@ -173,10 +173,27 @@ const comboRotationState = new Map();
  * Enables sticky fallback: the next request starts at the model that last
  * answered, then walks forward through the list, wrapping around, until one
  * succeeds. Storing the name (not an index) keeps the pointer correct when the
- * combo's member list or order is edited.
- * @type {Map<string, string>}
+ * combo's member list or order is edited. Scoped to the local calendar day: the
+ * first request after midnight starts again from the combo's own order.
+ * @type {Map<string, { model: string, day: string }>}
  */
 const comboFallbackIndex = new Map();
+
+const dayKey = () => new Date().toDateString();
+
+function rememberFallbackModel(comboName, modelStr) {
+  if (comboName) comboFallbackIndex.set(comboName, { model: modelStr, day: dayKey() });
+}
+
+function recallFallbackModel(comboName) {
+  const entry = comboFallbackIndex.get(comboName);
+  if (!entry) return null;
+  if (entry.day !== dayKey()) {
+    comboFallbackIndex.delete(comboName);
+    return null;
+  }
+  return entry.model;
+}
 
 // Trailing run of items after the last assistant/model turn = the current user
 // turn. It may span several messages (e.g. text + image split across blocks),
@@ -523,7 +540,7 @@ export async function handleComboChat({
 
   // Fallback strategy: start from last successful model (sticky fallback)
   if (comboStrategy === "fallback" && comboName) {
-    const rememberedModel = comboFallbackIndex.get(comboName);
+    const rememberedModel = recallFallbackModel(comboName);
     if (rememberedModel) {
       const idx = rotatedModels.indexOf(rememberedModel);
       if (idx > 0) {
@@ -627,18 +644,14 @@ export async function handleComboChat({
 
           log.info("COMBO", `Model ${modelStr} succeeded`);
           // Update fallback index to remember this successful model
-          if (comboStrategy === "fallback" && comboName) {
-            comboFallbackIndex.set(comboName, modelStr);
-          }
+          if (comboStrategy === "fallback") rememberFallbackModel(comboName, modelStr);
           return result;
         }
 
         if (peeked.outcome === "content") {
           log.info("COMBO", `Model ${modelStr} succeeded${peeked.timedOut ? " (peek deadline; committed)" : ""}`);
           // Update fallback index to remember this successful model
-          if (comboStrategy === "fallback" && comboName) {
-            comboFallbackIndex.set(comboName, modelStr);
-          }
+          if (comboStrategy === "fallback") rememberFallbackModel(comboName, modelStr);
           return peeked.response;
         }
 
@@ -650,9 +663,7 @@ export async function handleComboChat({
         if (isNoRetryFinish(peeked.finishReason) || isLast) {
           log.warn("COMBO", `Model ${modelStr} returned empty (${reasonLabel}) — ${isNoRetryFinish(peeked.finishReason) ? "no-retry class" : "last candidate"}, returning as-is`);
           // Update fallback index for last candidate success
-          if (comboStrategy === "fallback" && comboName) {
-            comboFallbackIndex.set(comboName, modelStr);
-          }
+          if (comboStrategy === "fallback") rememberFallbackModel(comboName, modelStr);
           return peeked.response;
         }
 
