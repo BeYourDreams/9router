@@ -626,7 +626,12 @@ export function parseQuotaData(provider, data) {
         // as "348%". The percentage is computed from used/total instead.
         if (data.quotas) {
           Object.entries(data.quotas).forEach(([quotaType, quota]) => {
-            if (!quota || (Number(quota.total) || 0) === 0) {
+            const total = Number(quota?.total) || 0;
+            // A 0-total bucket is dropped — except the personal plan row, which
+            // always exists: hiding it leaves the card with no quota rows at
+            // all ("Personal 0/0" is information, an empty card reads as a
+            // broken fetch). It renders as "No credits" with 0% remaining.
+            if (!quota || (total === 0 && quotaType !== "user")) {
               return;
             }
             normalizedQuotas.push({
@@ -639,8 +644,9 @@ export function parseQuotaData(provider, data) {
                       ? "Add-on"
                       : quotaType,
               used: quota.used || 0,
-              total: quota.total || 0,
+              total,
               unit: quota.unit,
+              ...(total === 0 ? { remainingPercentage: 0, emptyMessage: "No credits" } : {}),
               resetAt: quota.resetAt || null,
               // Qoder reports open-ended plans as a 9999 sentinel; the service
               // turns that into neverExpires so the row can read
