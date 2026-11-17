@@ -52,6 +52,9 @@ const nextConfig = {
   },
   env: {},
   experimental: {
+    // Set by the Next.js security upgrade (next upgrade --agent=security): the
+    // installed version was flagged by a published advisory.
+    agentUpgrade: "security",
     // #1529/#1572: LLM clients can send long context or base64 image payloads through /v1 rewrites.
     proxyClientMaxBodySize,
     // Cache fetch responses across HMR refreshes for faster dev reloads.
