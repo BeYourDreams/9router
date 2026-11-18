@@ -438,11 +438,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // The free-v2 lane's real egress is the Bun sidecar, so its proxy belongs
   // there. Proxying the loopback hop would only wrap a call to 127.0.0.1 and
-  // leave the upstream request direct.
+  // leave the upstream request direct (relay pools cannot reach localhost).
   if (isOpencodeFreeBridgeProvider(provider)) {
     await syncBridgeEgress(proxyOptions.connectionProxyEnabled ? proxyOptions.connectionProxyUrl : "");
     proxyOptions.connectionProxyEnabled = false;
     proxyOptions.connectionProxyUrl = "";
+    proxyOptions.vercelRelayUrl = "";
   }
 
   // Execute request
