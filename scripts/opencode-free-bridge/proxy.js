@@ -210,6 +210,12 @@ let current = { url: "", source: "none", error: null };
 let pool = { entries: [], errors: [], strategy: DEFAULT_STRATEGY, source: "none", error: null };
 let cooldowns = { baseMs: DEFAULT_COOLDOWN_MS, maxMs: DEFAULT_MAX_COOLDOWN_MS };
 
+// Relay egress can be changed at runtime via /api/proxy, so a configured
+// 9Router relay pool takes effect on the next request without a restart.
+// An operator-set UPSTREAM_RELAY_URL still wins (see setRelayUrl).
+const RELAY_ENV = "UPSTREAM_RELAY_URL";
+let relayUrl = (process.env[RELAY_ENV] || "").trim();
+
 /**
  * Health is keyed by egress identity, not by proxy URL: the "direct" entry has
  * no URL, and two entries must never share a health record.
@@ -428,6 +434,13 @@ function normalizeCooldowns(raw) {
 function loadFromDisk() {
   const envPool = (process.env[POOL_ENV] || "").trim();
   const envSingle = (process.env[ENV_OVERRIDE] || "").trim();
+  // Runtime synced relay survives reloads; the env override stays authoritative.
+  if (!(process.env[RELAY_ENV] || "").trim()) {
+    try {
+      const saved = JSON.parse(fs.readFileSync(configFile(), "utf8"));
+      relayUrl = typeof saved?.relayUrl === "string" ? saved.relayUrl.trim() : "";
+    } catch { relayUrl = ""; }
+  }
 
   if (envPool) {
     const spec = parsePoolSpec(envPool);
@@ -511,6 +524,42 @@ function loadFromDisk() {
 
 function getProxyUrl() {
   return current.url;
+}
+
+function getRelayUrl() {
+  return relayUrl;
+}
+
+/** Host only — a relay URL may carry a token in its query string. */
+function relayLabel(url) {
+  try { return new URL(url).origin; } catch { return "configured"; }
+}
+
+/** Set/clear the upstream relay at runtime; an operator env override is never overwritten. */
+function setRelayUrl(rawUrl) {
+  // Operator env override wins: a 9Router sync with an empty value must not
+  // silently clear a relay the operator pinned at startup.
+  if ((process.env[RELAY_ENV] || "").trim()) return { ok: true, ...describe() };
+  const next = typeof rawUrl === "string" ? rawUrl.trim() : "";
+  if (next) {
+    let u;
+    try { u = new URL(next); } catch { return { ok: false, error: "URL relay tidak valid." }; }
+    if (u.protocol !== "http:" && u.protocol !== "https:") {
+      return { ok: false, error: "Relay hanya mendukung http:// atau https://." };
+    }
+  }
+  const config = readConfigObject();
+  if (next) config.relayUrl = next;
+  else delete config.relayUrl;
+  if (!config.url && !config.pool && !config.relayUrl) {
+    try { fs.unlinkSync(configFile()); }
+    catch (err) { if (err.code !== "ENOENT") return { ok: false, error: `Gagal menghapus ${configFile()}: ${err.message}` }; }
+  } else {
+    const written = writeConfig(config);
+    if (!written.ok) return written;
+  }
+  relayUrl = next;
+  return { ok: true, ...describe() };
 }
 
 /** Enabled entries in config order; the pool's working set. */
@@ -716,6 +765,7 @@ function describe(now = Date.now()) {
   return {
     mode: poolActive ? "pool" : singleActive ? "proxy" : "direct",
     proxy: poolActive ? `${active.length} proxy` : displayHost(current.url),
+    relay: relayUrl ? relayLabel(relayUrl) : null,
     hasCredentials: poolActive
       ? entries.some((e) => /\/\/[^/@]+@/.test(e.url))
       : current.url
@@ -1239,6 +1289,8 @@ module.exports = {
   parsePoolSpec,
   displayHost,
   getProxyUrl,
+  getRelayUrl,
+  setRelayUrl,
   getPool: () => pool.entries.slice(),
   describe,
   setProxyUrl,

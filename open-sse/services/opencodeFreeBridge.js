@@ -142,6 +142,7 @@ function ping() {
 }
 
 let syncedEgress = null;
+let syncedRelay = null;
 
 /**
  * Install the provider's proxy on the sidecar, where the request to
@@ -149,20 +150,22 @@ let syncedEgress = null;
  * loopback hop instead only wraps a call to 127.0.0.1, and the real egress
  * stays direct. One POST per change; the sidecar persists it.
  */
-export async function syncBridgeEgress(proxyUrl) {
+export async function syncBridgeEgress(proxyUrl, relayUrl = "") {
   const next = proxyUrl || "";
-  if (next === syncedEgress) return true;
+  const nextRelay = relayUrl || "";
+  if (next === syncedEgress && nextRelay === syncedRelay) return true;
   if (!(await ensureOpencodeFreeBridge())) return false;
   const res = await fetch(`http://127.0.0.1:${PORT}/api/proxy`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ url: next }),
+    body: JSON.stringify({ url: next, relayUrl: nextRelay }),
   }).catch(() => null);
   if (!res?.ok) {
     console.warn(`[opencode-free-bridge] egress sync failed (${res?.status ?? "network"})`);
     return false;
   }
   syncedEgress = next;
+  syncedRelay = nextRelay;
   return true;
 }
 
@@ -184,7 +187,8 @@ export async function ensureOpencodeFreeBridge() {
       }
       const child = spawn(bin, [sidecarPath()], {
         cwd: process.cwd(),
-        env: { ...process.env, PORT: String(PORT), HOST },
+        // ponytail: sidecar self-update would overwrite the runtime relay sync patch; freeze this spawned copy only.
+        env: { ...process.env, PORT: String(PORT), HOST, AUTO_UPDATE: "0" },
         stdio: ["ignore", "pipe", "pipe"],
       });
       return child;

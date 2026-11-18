@@ -456,13 +456,19 @@ function syncUserAgent() {
  * that answered does not silently move to a different one mid-conversation.
  * Without it, a pool picks per call.
  */
+/** Relay chosen at runtime (9Router sync) wins over the boot-time env var. */
+function activeRelayUrl() {
+  return proxy.getRelayUrl?.() || UPSTREAM_RELAY_URL;
+}
+
 function upstreamFetch(url, init, egressUrl = null) {
-  if (!UPSTREAM_RELAY_URL) return proxy.netFetch(url, init, egressUrl);
+  const relay = activeRelayUrl();
+  if (!relay) return proxy.netFetch(url, init, egressUrl);
   const parsed = new URL(url);
   const headers = { ...(init.headers || {}) };
   headers["x-relay-target"] = parsed.origin;
   headers["x-relay-path"] = parsed.pathname + parsed.search;
-  return proxy.netFetch(UPSTREAM_RELAY_URL, { ...init, headers }, egressUrl);
+  return proxy.netFetch(relay, { ...init, headers }, egressUrl);
 }
 
 /**
@@ -1840,6 +1846,14 @@ async function handleProxyApi(req, res, pathname) {
   if (!payload || typeof payload !== "object") {
     return send(400, { error: "Body harus berupa objek JSON." });
   }
+  // Relay egress is runtime-configurable: 9Router syncs its selected relay pool
+  // here before each request, so changing the dashboard config needs no restart.
+  let relayResult = null;
+  if (Object.prototype.hasOwnProperty.call(payload, "relayUrl")) {
+    if (typeof payload.relayUrl !== "string") return send(400, { error: "relayUrl harus berupa string." });
+    relayResult = proxy.setRelayUrl(payload.relayUrl);
+    if (!relayResult.ok) return send(400, { error: relayResult.error });
+  }
 
   // Pool management. `entries` replaces the whole pool; `pool: []` clears it.
   // Kept apart from the single-proxy `url` field so one request cannot mean two
@@ -1900,7 +1914,11 @@ async function handleProxyApi(req, res, pathname) {
     return send(200, result);
   }
 
-  return send(400, { error: "Body harus berisi 'url' (satu proxy) atau 'entries' (pool)." });
+  if (relayResult) {
+    console.log(`[opencode-free-bridge] Egress relay ${relayResult.relay ? `via ${relayResult.relay}` : "cleared"}`);
+    return send(200, relayResult);
+  }
+  return send(400, { error: "Body harus berisi 'url' (satu proxy), 'relayUrl', atau 'entries' (pool)." });
 }
 
 function readRequestBody(req, maxBytes = MAX_BODY_BYTES) {
@@ -2081,10 +2099,10 @@ function handleRequest(req, res) {
               ? "pool"
               : proxyState.mode === "proxy"
                 ? "proxy"
-                : UPSTREAM_RELAY_URL
+                : activeRelayUrl()
                   ? "relay"
                   : "direct",
-          ...(UPSTREAM_RELAY_URL ? { relay: relayLabel(UPSTREAM_RELAY_URL) } : {}),
+          ...(activeRelayUrl() ? { relay: relayLabel(activeRelayUrl()) } : {}),
           proxy: proxyState,
           // Per-egress wire traffic and token accounting (usage.json). The
           // phone entry here is the mobile-data cost of the bridge today.

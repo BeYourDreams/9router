@@ -440,7 +440,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // there. Proxying the loopback hop would only wrap a call to 127.0.0.1 and
   // leave the upstream request direct (relay pools cannot reach localhost).
   if (isOpencodeFreeBridgeProvider(provider)) {
-    await syncBridgeEgress(proxyOptions.connectionProxyEnabled ? proxyOptions.connectionProxyUrl : "");
+    await syncBridgeEgress(proxyOptions.connectionProxyEnabled ? proxyOptions.connectionProxyUrl : "", proxyOptions.vercelRelayUrl || "");
     proxyOptions.connectionProxyEnabled = false;
     proxyOptions.connectionProxyUrl = "";
     proxyOptions.vercelRelayUrl = "";
