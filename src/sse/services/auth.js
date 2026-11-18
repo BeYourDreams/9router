@@ -32,6 +32,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     : (excludeConnectionIds ? new Set([excludeConnectionIds]) : new Set());
   const preferredConnectionId = options?.preferredConnectionId || null;
   const requestedModel = options?.requestedModel || model;
+  const excludeProxyPoolIds = options?.excludeProxyPoolIds instanceof Set
+    ? options.excludeProxyPoolIds
+    : new Set(options?.excludeProxyPoolIds || []);
   // Acquire mutex to prevent race conditions
   const currentMutex = selectionMutex;
   let resolveMutex;
@@ -54,7 +57,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       let allPools = [];
       if (strategy !== "none") {
         allPools = await getProxyPools({ isActive: true });
-        const poolIds = allPools.filter(p => p.proxyUrl).map(p => p.id);
+        const poolIds = allPools.filter(p => p.proxyUrl && !excludeProxyPoolIds.has(p.id)).map(p => p.id);
         pickedId = pickProxyPoolId(poolIds, strategy, providerId);
       } else if (isOpencode && pickedId && pickedId !== "__none__") {
         allPools = await getProxyPools({ isActive: true });
@@ -88,6 +91,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
           vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
           strictProxy: resolvedProxy.strictProxy === true,
+          proxyRotation: strategy !== "none",
           ...(isOpencode ? { connectionProxyAlternates } : {}),
         },
       };

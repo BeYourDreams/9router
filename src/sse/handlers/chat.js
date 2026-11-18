@@ -294,12 +294,16 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   // Try with available accounts (fallback on errors)
   const excludeConnectionIds = new Set();
+  const excludeProxyPoolIds = new Set();
   let lastError = null;
   let lastStatus = null;
   let lastHeaders = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { requestedModel: requestedModel || model });
+    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, {
+      requestedModel: requestedModel || model,
+      excludeProxyPoolIds,
+    });
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {
@@ -400,6 +404,25 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     });
 
     if (result.success) return result.response;
+
+    // A 429 from a rotated proxy pool means that egress is spent, not the
+    // account. Walk the remaining pools; once none are left the next credential
+    // resolves with no pool and the request goes direct.
+    const usedProxyPoolId = credentials.providerSpecificData?.connectionProxyPoolId;
+    if (
+      result.status === HTTP_STATUS.RATE_LIMITED &&
+      credentials.providerSpecificData?.proxyRotation === true &&
+      credentials.providerSpecificData?.strictProxy !== true &&
+      usedProxyPoolId &&
+      !excludeProxyPoolIds.has(usedProxyPoolId)
+    ) {
+      excludeProxyPoolIds.add(usedProxyPoolId);
+      log.warn("FALLBACK", `⇄ PROXY:${usedProxyPoolId} 429 → NEXT PROXY/DIRECT`);
+      lastError = result.error;
+      lastStatus = result.status;
+      lastHeaders = upstreamResponseHeaders(result.response?.headers);
+      continue;
+    }
 
     // Antigravity 409/429: refresh live quota to get exact resetAt before locking
     let quotaResetMs = null;

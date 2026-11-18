@@ -33,5 +33,7 @@ export default {
     { id: "glm-5.3-flash-free", name: "GLM 5.3 Flash Free" },
   ],
   passthroughModels: true,
-  modelsFetcher: { url: "http://127.0.0.1:20135/v1/models", type: "openai" },
+  // Mirror OpenCode Free's live catalogue; the sidecar's /v1/models only knows
+  // the models this process has seen, not the full free tier.
+  modelsFetcher: { url: "https://opencode.ai/zen/v1/models", type: "opencode-free" },
 };
