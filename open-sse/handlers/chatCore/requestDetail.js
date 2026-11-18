@@ -153,6 +153,27 @@ export function formatDoneLine({ usage, latency }) {
   return `DONE ${latency?.total ?? 0}ms${ttftStr} · ${inStr} · OUT ${outTok}`;
 }
 
+/**
+ * Record a request that never produced a completion (provider error, no
+ * credentials, upstream 5xx). Without it the usage analytics count only the
+ * requests that were served, so the dashboard shows far fewer requests than
+ * the client actually made.
+ */
+export function recordFailedUsage({ provider, model, connectionId, apiKey, endpoint, status }) {
+  const write = saveRequestUsage({
+    provider: provider || "unknown",
+    model: model || "unknown",
+    tokens: { prompt_tokens: 0, completion_tokens: 0 },
+    timestamp: new Date().toISOString(),
+    connectionId: connectionId || undefined,
+    apiKey: apiKey || undefined,
+    endpoint: endpoint || null,
+    status: status ? `error ${status}` : "error",
+  });
+  // The write is fire-and-forget; a mocked/absent repo must not break the request.
+  Promise.resolve(write).catch(() => { });
+}
+
 export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, label = "USAGE", silent = false }) {
   if (!tokens || typeof tokens !== "object") return;
 

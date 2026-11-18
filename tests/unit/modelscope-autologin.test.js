@@ -66,7 +66,16 @@ describe("ModelScope earn-rules parsing", () => {
   });
 
   it("handles an empty rules list without throwing", () => {
-    expect(parseEarnRules({ success: true, data: [] })).toEqual({ dailyRules: [], creditedToday: false, todayEarned: 0, emailVerified: true });
+    expect(parseEarnRules({ success: true, data: [] })).toEqual({ dailyRules: [], creditedToday: false, allDailyCredited: false, todayEarned: 0, emailVerified: true });
+  });
+
+  it("notices a bound Aliyun account whose +50 has not landed yet", () => {
+    // Bound (earned it before) but today's 绑定增额 is still missing: the day is
+    // not complete even though the base 200 is there.
+    const r = parseEarnRules(RULES_PARTIAL);
+    expect(r.creditedToday).toBe(false);
+    expect(r.allDailyCredited).toBe(false);
+    expect(r.todayEarned).toBe(200);
   });
 
   it("reads the balance fields", () => {

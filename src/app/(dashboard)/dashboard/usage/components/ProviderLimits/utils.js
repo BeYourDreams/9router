@@ -40,6 +40,23 @@ export function getConnectionQuotaRemaining(connection, quotaData) {
   return Number.POSITIVE_INFINITY;
 }
 
+/**
+ * One-line state of the Qoder daily claim, appended to the calendar toggle's
+ * tooltip. Without it an account that got no Credits looks broken; the reasons
+ * are all upstream (Qoder grants the daily campaign per person, and the window
+ * only opens at 10:00 UTC+8).
+ */
+export function qoderClaimStateLabel(connection) {
+  const status = connection?.qoderLastClaimStatus;
+  if (!status) return "";
+  const day = connection?.qoderLastClaimDate ? ` (${connection.qoderLastClaimDate})` : "";
+  if (status === "claimed") return ` · 已领取 ${connection?.qoderLastClaimCredits || 0} Credits${day}`;
+  if (status === "already-claimed") return ` · 今日已领取（在 IDE 中领取过）${day}`;
+  if (status === "claimed-elsewhere") return " · 今日额度已被同一人其它账号领取（Qoder 每日仅限同一人领取一次）";
+  if (status === "no-campaign") return " · 暂无每日活动（活动 10:00 UTC+8 开放，稍后自动重试）";
+  return "";
+}
+
 // Stable group-by-provider: first-seen provider order, original order within group.
 function groupByProviderStable(connections) {
   const seen = new Map();

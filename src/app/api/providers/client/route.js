@@ -10,6 +10,9 @@ const SAFE_FIELDS = [
   "testStatus", "lastError", "lastErrorAt", "errorCode",
   "expiresAt", "lastUsedAt", "consecutiveUseCount",
   "createdAt", "updatedAt",
+  // Daily check-in state (Qoder): lets the quota card explain why an account
+  // did not get its daily Credits instead of showing a silent toggle.
+  "qoderLastClaimDate", "qoderLastClaimAt", "qoderLastClaimCredits", "qoderLastClaimStatus",
 ];
 
 const SAFE_PSD_FIELDS = [

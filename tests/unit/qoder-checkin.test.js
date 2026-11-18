@@ -108,6 +108,34 @@ describe("Qoder daily claim", () => {
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/no Qoder access token/);
   });
+
+  it("treats a grant taken by another account of the same person as a no-op", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      if (String(url).includes("/claim")) {
+        return new Response(JSON.stringify({
+          status: "BLOCKED",
+          failureCode: "SAME_PERSON_ALREADY_CLAIMED",
+          benefit: { amount: 100 },
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify(CAMPAIGNS), { status: 200 });
+    });
+    const res = await claimQoderDailyCredits({ provider: "qoder-cn", accessToken: "jt-4" });
+    expect(res.ok).toBe(true);
+    expect(res.claimed).toBe(0);
+    expect(res.alreadyClaimed).toBe(true);
+    expect(res.creditedElsewhere).toBe(true);
+  });
+
+  it("reports the daily campaign as missing when the account has none", async () => {
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({
+      campaigns: [{ campaignId: "promo-1", actionType: "VIEW_DETAILS", claimStatus: "CLAIMABLE" }],
+    }), { status: 200 }));
+    const res = await claimQoderDailyCredits({ provider: "qoder", accessToken: "jt-5" });
+    expect(res.ok).toBe(true);
+    expect(res.dailySeen).toBe(false);
+    expect(res.alreadyClaimed).toBe(false);
+  });
 });
 
 describe("Qoder claim scheduler", () => {
@@ -145,6 +173,31 @@ describe("Qoder claim scheduler", () => {
     const res = await claimConnection(conn, d, now);
     expect(res).toMatchObject({ claimed: 0, alreadyClaimed: true });
     expect(d.updateConnection).toHaveBeenCalledWith("c1", expect.objectContaining({ qoderLastClaimCredits: 0 }));
+  });
+
+  it("keeps the day open when the account has no daily campaign yet", async () => {
+    // The window opens at 10:00 (UTC+8): a tick before that must not burn the
+    // day, so no day stamp is written and the next tick tries again.
+    const d = deps({ claim: vi.fn(async () => ({ ok: true, claimed: 0, credits: 0, dailySeen: false })) });
+    const now = new Date("2026-05-01T08:00:00").getTime();
+    const res = await claimConnection(conn, d, now);
+    expect(res).toMatchObject({ claimed: 0, noCampaign: true });
+    const patch = d.updateConnection.mock.calls[0][1];
+    expect(patch.qoderLastClaimDate).toBeUndefined();
+    expect(patch.qoderLastClaimStatus).toBe("no-campaign");
+  });
+
+  it("reports that the day's grant went to another account of the same person", async () => {
+    const d = deps({
+      claim: vi.fn(async () => ({ ok: true, claimed: 0, credits: 0, alreadyClaimed: true, creditedElsewhere: true })),
+    });
+    const now = new Date("2026-05-01T10:00:00").getTime();
+    const res = await claimConnection(conn, d, now);
+    expect(res).toMatchObject({ claimed: 0, alreadyClaimed: true, creditedElsewhere: true });
+    expect(d.updateConnection).toHaveBeenCalledWith("c1", expect.objectContaining({
+      qoderLastClaimDate: localDayKey(now),
+      qoderLastClaimStatus: "claimed-elsewhere",
+    }));
   });
 
   it("only claims opted-in connections", async () => {

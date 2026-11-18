@@ -20,6 +20,11 @@ import { qoderOpenApiBase, qoderRegionOf } from "../shared/qoder/constants.js";
 const CAMPAIGNS_PATH = "/sash/api/v1/me/campaigns";
 const CLAIM_PATH = "/sash/api/v1/me/campaigns/{cid}/claim";
 
+// Upstream refuses a second account of the same person with this code: the
+// daily 100 Credits are granted per person, so sibling accounts of one person
+// can never each claim them.
+const ALREADY_CLAIMED_CODES = new Set(["SAME_PERSON_ALREADY_CLAIMED"]);
+
 // The IDE tags its calls with Cosy-* headers; the campaign API only needs the
 // client type (10 = desktop). The rest of the device fingerprint is optional.
 const DEVICE_HEADERS = { "Cosy-ClientType": "10" };
@@ -112,11 +117,24 @@ export async function claimQoderCampaign(connection, campaignId, proxyOptions = 
     }
     const body = await res.json().catch(() => null);
     const data = body?.data && typeof body.data === "object" ? body.data : body;
+    const status = data?.status || "";
+    const failureCode = data?.failureCode || "";
+    // "CLAIMED" + replayed=true: the grant existed before this call (claimed
+    // in the IDE). SAME_PERSON_ALREADY_CLAIMED: the grant went to another
+    // account of the same person — Qoder grants the daily campaign per person,
+    // not per account. Both are a no-op for us, not a failure.
+    const creditedElsewhere = ALREADY_CLAIMED_CODES.has(failureCode);
+    const alreadyClaimed = status === "CLAIMED" || creditedElsewhere;
     return {
-      ok: data?.status === "CLAIMED",
-      status: data?.status || "",
+      ok: status === "CLAIMED" && data?.replayed !== true,
+      alreadyClaimed,
+      creditedElsewhere,
+      status,
+      failureCode,
       amount: Number(data?.benefit?.amount) || 0,
-      error: data?.status === "CLAIMED" ? undefined : `claim status ${data?.status || "unknown"}`,
+      error: status === "CLAIMED"
+        ? undefined
+        : `claim status ${status || "unknown"}${failureCode ? ` (${failureCode})` : ""}`,
     };
   } catch (e) {
     return { ok: false, error: e?.message ?? String(e) };
@@ -125,7 +143,7 @@ export async function claimQoderCampaign(connection, campaignId, proxyOptions = 
 
 /**
  * Claim every claimable daily campaign of an account.
- * Returns { ok, claimed, credits, alreadyClaimed, error }.
+ * Returns { ok, claimed, credits, alreadyClaimed, creditedElsewhere, dailySeen, error }.
  */
 export async function claimQoderDailyCredits(connection, proxyOptions = null) {
   const list = await getQoderCampaigns(connection, proxyOptions);
@@ -133,17 +151,24 @@ export async function claimQoderDailyCredits(connection, proxyOptions = null) {
 
   const claimable = pickClaimable(list.campaigns);
   if (claimable.length === 0) {
+    // No claimable row. A daily row that reads CLAIMED inside its window means
+    // this account already holds today's grant (claimed here or in the IDE).
+    const claimedRows = pickClaimedToday(list.campaigns);
     return {
       ok: true,
       claimed: 0,
-      credits: 0,
-      alreadyClaimed: pickClaimedToday(list.campaigns).length > 0,
+      credits: claimedRows.reduce((sum, c) => sum + (c.amount || 0), 0),
+      alreadyClaimed: claimedRows.length > 0,
+      creditedElsewhere: false,
+      dailySeen: claimedRows.length > 0,
       campaigns: list.campaigns,
     };
   }
 
   let claimed = 0;
   let credits = 0;
+  let alreadyClaimed = false;
+  let creditedElsewhere = false;
   let error;
   for (const campaign of claimable) {
     const res = await claimQoderCampaign(connection, campaign.campaignId, proxyOptions);
@@ -152,9 +177,14 @@ export async function claimQoderDailyCredits(connection, proxyOptions = null) {
       credits += res.amount || campaign.amount || 0;
     } else if (res.authExpired) {
       return { ok: false, claimed, credits, error: res.error, authExpired: true };
+    } else if (res.alreadyClaimed) {
+      // The person already holds today's grant (another account of theirs).
+      // Nothing to claim here — but the day is settled, so stop asking.
+      alreadyClaimed = true;
+      creditedElsewhere = creditedElsewhere || res.creditedElsewhere === true;
     } else {
       error = res.error;
     }
   }
-  return { ok: !error, claimed, credits, error, campaigns: list.campaigns };
+  return { ok: !error, claimed, credits, alreadyClaimed, creditedElsewhere, dailySeen: true, error, campaigns: list.campaigns };
 }

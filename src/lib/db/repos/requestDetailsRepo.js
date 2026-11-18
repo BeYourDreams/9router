@@ -15,21 +15,14 @@ async function getObservabilityConfig() {
   try {
     const { getSettings } = await import("./settingsRepo.js");
     const settings = await getSettings();
-    const envRequestLogs = process.env.ENABLE_REQUEST_LOGS;
-    if (envRequestLogs !== undefined) {
-      const enabled = envRequestLogs.toLowerCase() === "true";
-      cachedConfig = {
-        enabled,
-        maxRecords: settings.observabilityMaxRecords || parseInt(process.env.OBSERVABILITY_MAX_RECORDS || String(DEFAULT_MAX_RECORDS), 10),
-        batchSize: settings.observabilityBatchSize || parseInt(process.env.OBSERVABILITY_BATCH_SIZE || String(DEFAULT_BATCH_SIZE), 10),
-        flushIntervalMs: settings.observabilityFlushIntervalMs || parseInt(process.env.OBSERVABILITY_FLUSH_INTERVAL_MS || String(DEFAULT_FLUSH_INTERVAL_MS), 10),
-        maxJsonSize: (settings.observabilityMaxJsonSize || parseInt(process.env.OBSERVABILITY_MAX_JSON_SIZE || "5", 10)) * 1024,
-      };
-      cachedConfigTs = Date.now();
-      return cachedConfig;
-    }
-    const envFallback = process.env.OBSERVABILITY_ENABLED !== "false";
+    // The dashboard toggle wins: the env var is the default for a fresh
+    // install, not a veto over an explicit user choice. It used to silently
+    // switch the request-details view off while the UI still showed it on.
     const uiFlag = typeof settings.enableObservability === "boolean";
+    const envRequestLogs = process.env.ENABLE_REQUEST_LOGS;
+    const envFallback = envRequestLogs !== undefined
+      ? envRequestLogs.toLowerCase() === "true"
+      : process.env.OBSERVABILITY_ENABLED !== "false";
     const enabled = uiFlag
       ? settings.enableObservability
       : envFallback;

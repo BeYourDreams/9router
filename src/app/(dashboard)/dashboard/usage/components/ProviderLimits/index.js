@@ -14,6 +14,7 @@ import {
   getQuotaVisibilityKey,
   getConnectionLabel,
   getConnectionQuotaRemaining,
+  qoderClaimStateLabel,
   sortVisibleConnections,
   buildLoadingState,
   filterQuotaStateByConnections,
@@ -1531,9 +1532,9 @@ export default function ProviderLimits() {
                     {(getAutoSigninConfigForProvider(conn.provider)?.settingsKey === "qoderAutoSignin")
                       && isAutoSigninEligible(conn) && (() => {
                       const on = signinSettings.qoderAutoSignin?.connections?.[conn.id] === true;
-                      const tooltipText = on
+                      const tooltipText = (on
                         ? "Daily claim is on. The daily Credits are claimed automatically once per day. Click to turn off."
-                        : "Daily claim (每日签到领 Credits): claim the daily 100 Credits once per day. Click to turn on.";
+                        : "Daily claim (每日签到领 Credits): claim the daily 100 Credits once per day. Click to turn on.") + qoderClaimStateLabel(conn);
                       return (
                         <Tooltip text={tooltipText}>
                           <button

@@ -131,8 +131,13 @@ export function parseEarnRules(body) {
   const earnable = dailyRules.filter((r) => r.bound !== false);
   const creditedToday = earnable.length > 0
     && earnable.every((r) => r.dailyCap > 0 && r.todayUsed >= r.dailyCap);
+  // Every daily row at its cap, bound or not: an account that IS bound to
+  // Aliyun but whose 绑定增额 has not landed yet looks "unbound" here (it has
+  // never earned it), and only this flag notices the missing 50.
+  const allDailyCredited = dailyRules.length > 0
+    && dailyRules.every((r) => r.dailyCap > 0 && r.todayUsed >= r.dailyCap);
   const todayEarned = earnable.reduce((sum, r) => sum + r.todayEarned, 0);
-  return { dailyRules, creditedToday, todayEarned, emailVerified };
+  return { dailyRules, creditedToday, allDailyCredited, todayEarned, emailVerified };
 }
 
 /** { total, available, frozen } or null when the reply has no balance fields. */
@@ -172,19 +177,32 @@ export async function runModelScopeDailyLogin(connection, proxyOptions = null) {
     // parallel reads report the pre-grant state ("未领取 200 魔粒" for an
     // account that was just credited).
     const balanceBody = await callMagicube(token, BALANCE_PATH, proxyOptions, base);
-    const rulesBody = await callMagicube(token, EARN_RULES_PATH, proxyOptions, base);
+    let rulesBody = await callMagicube(token, EARN_RULES_PATH, proxyOptions, base);
 
-    const balance = parseBalance(balanceBody);
-    const { dailyRules, creditedToday, todayEarned } = parseEarnRules(rulesBody);
+    let balance = parseBalance(balanceBody);
+    let parsed = parseEarnRules(rulesBody);
+
+    // ModelScope applies the day's payout a moment after the login: read
+    // straight away the rules still report the pre-grant state, and the
+    // 绑定阿里云 +50 can need one more authenticated call before it shows up.
+    // Re-read until every daily row is at its cap so the recorded payout is
+    // the real one (a stale 0 is what made the dashboard say "50 魔粒 missing"
+    // for an account that had in fact been credited).
+    for (let attempt = 0; attempt < 2 && !parsed.allDailyCredited; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+      rulesBody = await callMagicube(token, EARN_RULES_PATH, proxyOptions, base);
+      parsed = parseEarnRules(rulesBody);
+      balance = parseBalance(await callMagicube(token, BALANCE_PATH, proxyOptions, base)) || balance;
+    }
 
     return {
       ok: true,
       // The login is the claim: report the daily rows as credited for today.
       credited: true,
-      creditedToday,
-      earnedToday: todayEarned,
+      creditedToday: parsed.creditedToday,
+      earnedToday: parsed.todayEarned,
       balance,
-      dailyRules,
+      dailyRules: parsed.dailyRules,
     };
   } catch (e) {
     if (e instanceof MagicubeRefused) {

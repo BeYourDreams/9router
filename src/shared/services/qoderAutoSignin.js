@@ -13,6 +13,11 @@
 //   - Opt-in is per connection: settings.qoderAutoSignin.connections[id] === true
 //     (settings.enabled === false disables the feature wholesale).
 //   - A refused/expired token is logged and cooled down — never logged out.
+//
+// The day is sealed ONLY when today's grant is settled (claimed here, or the
+// upstream says it already exists). An account that has no daily campaign yet
+// stays open, because the window opens at 10:00 (UTC+8) and a tick before that
+// must not burn the whole day.
 
 import "open-sse/index.js";
 
@@ -101,25 +106,43 @@ export async function claimConnection(conn, deps, nowMs = Date.now()) {
 
   delete g.failureCache[key];
 
-  // Nothing claimable today (no daily campaign in this region, or already
-  // claimed upstream): seal the day so the tick stops asking.
-  if (result.claimed === 0) {
-    await deps.updateConnection(conn.id, {
-      qoderLastClaimDate: today,
-      qoderLastClaimAt: new Date(nowMs).toISOString(),
-      qoderLastClaimCredits: 0,
-    });
-    console.log(`[QoderCheckin] ${key}: nothing to claim (day ${today})`);
-    return { claimed: 0, credits: 0, alreadyClaimed: result.alreadyClaimed === true };
+  const patch = { qoderLastClaimAt: new Date(nowMs).toISOString() };
+
+  if (result.claimed > 0) {
+    patch.qoderLastClaimDate = today;
+    patch.qoderLastClaimCredits = result.credits || 0;
+    patch.qoderLastClaimStatus = "claimed";
+  } else if (result.alreadyClaimed) {
+    // Today's grant already exists: this account holds it (claimed in the IDE)
+    // or another account of the same person does — Qoder grants the daily
+    // campaign per person. Either way the day is settled; stop asking.
+    patch.qoderLastClaimDate = today;
+    patch.qoderLastClaimCredits = result.credits || 0;
+    patch.qoderLastClaimStatus = result.creditedElsewhere ? "claimed-elsewhere" : "already-claimed";
+  } else {
+    // No daily campaign for this account right now. The window opens at 10:00
+    // (UTC+8), so an early tick must NOT seal the day — the next tick has to
+    // try again. Qoder also serves the campaign per person, so an account of a
+    // person who already claimed never sees one: that is a fact, not an error.
+    patch.qoderLastClaimStatus = "no-campaign";
   }
 
-  await deps.updateConnection(conn.id, {
-    qoderLastClaimDate: today,
-    qoderLastClaimAt: new Date(nowMs).toISOString(),
-    qoderLastClaimCredits: result.credits || 0,
-  });
-  console.log(`[QoderCheckin] ${key}: claimed +${result.credits || 0} Credits (day ${today})`);
-  return { claimed: result.claimed, credits: result.credits || 0 };
+  await deps.updateConnection(conn.id, patch);
+
+  if (patch.qoderLastClaimStatus === "claimed") {
+    console.log(`[QoderCheckin] ${key}: claimed +${result.credits || 0} Credits (day ${today})`);
+    return { claimed: result.claimed, credits: result.credits || 0 };
+  }
+  if (patch.qoderLastClaimStatus === "already-claimed") {
+    console.log(`[QoderCheckin] ${key}: already claimed today (day ${today})`);
+    return { claimed: 0, credits: result.credits || 0, alreadyClaimed: true };
+  }
+  if (patch.qoderLastClaimStatus === "claimed-elsewhere") {
+    console.log(`[QoderCheckin] ${key}: today's grant already used by another account of this person (day ${today})`);
+    return { claimed: 0, credits: 0, alreadyClaimed: true, creditedElsewhere: true };
+  }
+  console.log(`[QoderCheckin] ${key}: no daily campaign for this account yet (day ${today}) — retrying on the next tick`);
+  return { claimed: 0, credits: 0, noCampaign: true };
 }
 
 function createDefaultDeps() {

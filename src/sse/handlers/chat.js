@@ -28,6 +28,7 @@ import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
 import { getKeyAccessContext, enforceKeyAccess, filterAdapterModels } from "../services/keyAccess.js";
 import { resolveSmartChoice } from "../services/systemoneRouter.js";
+import { recordFailedUsage } from "open-sse/handlers/chatCore/requestDetail.js";
 
 /**
  * Handle chat completion request
@@ -106,6 +107,25 @@ export async function handleChat(request, clientRawRequest = null) {
 
   const requiredCapabilities = detectRequiredCapabilities(body);
 
+  // A request that fails is still a request. Without this the usage analytics
+  // count only the served ones, so the dashboard shows far fewer requests than
+  // the client actually made. Recorded once per user request - a combo that
+  // walks through five members still counts as one.
+  const withFailureUsage = async (responsePromise) => {
+    const response = await responsePromise;
+    if (response && response.status >= 400) {
+      const info = await getModelInfo(modelStr).catch(() => null);
+      recordFailedUsage({
+        provider: info?.provider,
+        model: info?.model || modelStr,
+        apiKey,
+        endpoint: clientRawRequest?.endpoint,
+        status: response.status,
+      });
+    }
+    return response;
+  };
+
   // Check if model is a combo (has multiple models with fallback)
   const comboModels = await getComboModels(modelStr);
   if (comboModels) {
@@ -118,7 +138,7 @@ export async function handleChat(request, clientRawRequest = null) {
 
     if (comboStrategy === "fusion") {
       log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
-      return handleFusionChat({
+      return withFailureUsage(handleFusionChat({
         body,
         models: comboModels,
         handleSingleModel: (b, m, isPanel) => {
@@ -133,13 +153,13 @@ export async function handleChat(request, clientRawRequest = null) {
         comboName: modelStr,
         judgeModel: comboStrategies[modelStr]?.judgeModel,
         tuning: comboStrategies[modelStr]?.fusionTuning,
-      });
+      }));
     }
 
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     const comboCfg = comboStrategies[modelStr] || {};
     log.info("CHAT", `Combo "${modelStr}" with ${augmentedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
-    return handleComboChat({
+    return withFailureUsage(handleComboChat({
       body,
       models: augmentedModels,
       handleSingleModel: withCapacityAdapterStripping(
@@ -162,7 +182,7 @@ export async function handleChat(request, clientRawRequest = null) {
             log,
           })
         : null,
-    });
+    }));
   }
 
   // Single model request — may still switch to a capacity-adapter model if the
@@ -171,7 +191,7 @@ export async function handleChat(request, clientRawRequest = null) {
   if (soloAugmented.length > 1) {
     const adapterAdded = soloAugmented.filter((m) => m !== modelStr);
     log.info("CHAT", `Capacity adapter for [${[...requiredCapabilities].join(",")}] on "${modelStr}" → trying ${soloAugmented.join(", ")}`);
-    return handleComboChat({
+    return withFailureUsage(handleComboChat({
       body,
       models: soloAugmented,
       handleSingleModel: withCapacityAdapterStripping(
@@ -181,10 +201,12 @@ export async function handleChat(request, clientRawRequest = null) {
       log,
       comboName: modelStr,
       comboStrategy: getActiveAdapterStrategy(requiredCapabilities, settings)
-    });
+    }));
   }
 
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, contextMarker ? `${modelStr.slice(modelStr.indexOf("/") + 1)}[${contextMarker}]` : null);
+  return withFailureUsage(
+    handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, contextMarker ? `${modelStr.slice(modelStr.indexOf("/") + 1)}[${contextMarker}]` : null),
+  );
 }
 
 /**
