@@ -761,6 +761,7 @@ export async function refreshMiniMaxCodeToken(provider, refreshToken, log) {
         // only if the answer oddly omits it.
         refreshToken: data.refresh_token || refreshToken,
         expiresIn: data.expires_in,
+        _previousRefreshToken: refreshToken,
       };
     } catch (error) {
       log?.error?.("TOKEN_REFRESH", `Error refreshing MiniMax token (${provider}): ${error.message}`);
@@ -806,9 +807,18 @@ export async function refreshNousToken(refreshToken, log) {
 
       if (!tokenResponse.ok) {
         const error = await tokenResponse.text().catch(() => "");
+        const failure = classifyOAuthRefreshError(error, tokenResponse.status);
+        if (failure.permanent) {
+          log?.error?.("TOKEN_REFRESH", "Nous refresh token invalid or revoked. Re-auth required.", {
+            status: tokenResponse.status,
+            code: failure.code,
+          });
+          return { error: "invalid_grant", code: failure.code };
+        }
         log?.error?.("TOKEN_REFRESH", "Failed to refresh Nous token", {
           status: tokenResponse.status,
           error,
+          code: failure.code,
         });
         return null;
       }

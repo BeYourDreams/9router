@@ -4,7 +4,7 @@ import { applyThinking, extractThinking, stripThinkingSuffix } from "../translat
 import { FORMATS } from "../translator/formats.js";
 import { normalizeClaudePassthrough, anchorClaudeCache } from "../translator/formats/claude.js";
 import { createStreamController } from "../utils/streamHandler.js";
-import { refreshWithRetry } from "../services/tokenRefresh.js";
+import { refreshWithRetry, isUnrecoverableRefreshError } from "../services/tokenRefresh.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
 import { getModelTargetFormat, getModelSupportedFormats, getModelStrip, getModelUpstreamId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
@@ -516,6 +516,16 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
         }
         return result;
       }, 3, log);
+      if (isUnrecoverableRefreshError(newCredentials)) {
+        log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh token invalid/expired — re-auth required`);
+        if (onCredentialsInvalid) {
+          try { await onCredentialsInvalid(newCredentials); } catch (e) { log?.warn?.("TOKEN", `onCredentialsInvalid failed: ${e.message}`); }
+        }
+        trackPendingRequest(model, provider, connectionId, false, true);
+        appendRequestLog({ model, provider, connectionId, status: "FAILED 401" }).catch(() => { });
+        const reauthMsg = formatProviderError(new Error("Refresh token invalid/expired; please re-authenticate this connection"), provider, model, HTTP_STATUS.UNAUTHORIZED);
+        return createErrorResult(HTTP_STATUS.UNAUTHORIZED, reauthMsg);
+      }
       if (newCredentials?.accessToken || newCredentials?.copilotToken) {
         if (log?.line) log.line(reqTag, "🔑", `TOKEN REFRESHED · ${provider}/${model}`);
         Object.assign(credentials, newCredentials);

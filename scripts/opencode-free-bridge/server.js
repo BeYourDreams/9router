@@ -1044,6 +1044,7 @@ function prepareToolsWithFingerprint(clientTools = [], flat = false, scope = nul
   const normalized = [];
   const takenNames = new Set(clientTools.map(getToolName).filter(Boolean));
   const presentExactFingerprints = new Set();
+  const clientNames = new Set(clientTools.map(getToolName).filter(Boolean));
 
   for (const t of clientTools) {
     const name = getToolName(t);
@@ -1111,6 +1112,15 @@ function prepareToolsWithFingerprint(clientTools = [], flat = false, scope = nul
     if (!def) continue;
     normalized.push(def);
     appended.push(name);
+  }
+
+  // pi/opencode compatibility: if client exposes "bash" but not "shell" (or
+  // vice versa), a fingerprint placeholder may be called by the model while the
+  // client only knows the equivalent name. Map such calls back to the client's
+  // tool to avoid "shell tool not found" in pi.
+  for (const [from, to] of [["shell", "bash"], ["bash", "shell"]]) {
+    if (!appended.includes(from) || aliasToOriginal.has(from) || clientNames.has(from) || !clientNames.has(to)) continue;
+    aliasToOriginal.set(from, originalToAlias.get(to) || to);
   }
 
   return {

@@ -8,7 +8,7 @@ import {
   isValidApiKey,
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
-import { getSettings } from "@/lib/localDb";
+import { getSettings, updateProviderConnection } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -320,6 +320,15 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // Account selection shown in the unified "▶" line (acc:...)
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
 
+    // Unrecoverable refresh failure: connection marked expired in DB, try next account.
+    if (refreshedCredentials?._refreshExpired) {
+      log.warn("AUTH", `${provider} | connection ${credentials.connectionId?.slice(0, 8)} refresh token expired, skipping`);
+      excludeConnectionIds.add(credentials.connectionId);
+      lastError = refreshedCredentials._refreshError?.code || refreshedCredentials._refreshError?.error || "Refresh token invalid/expired; re-authentication required";
+      lastStatus = HTTP_STATUS.UNAUTHORIZED;
+      continue;
+    }
+
     // Ensure real project ID is available for providers that need it (P0 fix: cold miss)
     if ((provider === "antigravity" || provider === "gemini-cli") && !refreshedCredentials.projectId) {
       const pid = await getProjectIdForConnection(credentials.connectionId, refreshedCredentials.accessToken, provider);
@@ -371,6 +380,16 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           ...newCreds,
           existingProviderSpecificData: credentials.providerSpecificData,
           testStatus: "active"
+        });
+      },
+      onCredentialsInvalid: async (err) => {
+        const reason = typeof err?.code === "string" ? err.code : (err?.error || "invalid_grant");
+        await updateProviderConnection(credentials.connectionId, {
+          testStatus: "expired",
+          isActive: false,
+          lastError: `[${provider}] refresh token invalid/expired (${reason}); re-authentication required`,
+          errorCode: 401,
+          lastErrorAt: new Date().toISOString(),
         });
       },
       onRequestSuccess: async () => {

@@ -21,7 +21,8 @@ import {
   getAllAccessTokens as _getAllAccessTokens,
   refreshKiroToken as _refreshKiroToken,
   refreshNousToken as _refreshNousToken,
-  getRefreshLeadMs as _getRefreshLeadMs
+  getRefreshLeadMs as _getRefreshLeadMs,
+  isUnrecoverableRefreshError,
 } from "open-sse/services/tokenRefresh.js";
 import {
   refreshProviderCredentials as _refreshProviderCredentials,
@@ -154,6 +155,27 @@ function _refreshProjectId(provider, connectionId, accessToken) {
   }
 }
 
+// Mark a connection as requiring re-authentication after an unrecoverable refresh failure.
+async function markRefreshTokenExpired(connectionId, provider, errorResult) {
+  if (!connectionId) return null;
+  const reason = typeof errorResult?.code === "string" ? errorResult.code : (errorResult?.error || "invalid_grant");
+  const updates = {
+    testStatus: "expired",
+    isActive: false,
+    lastError: `[${provider}] refresh token invalid/expired (${reason}); re-authentication required`,
+    errorCode: 401,
+    lastErrorAt: new Date().toISOString(),
+  };
+  try {
+    const res = await updateProviderConnection(connectionId, updates);
+    log.warn("TOKEN_REFRESH", "Connection marked expired due to unrecoverable refresh error", { connectionId, provider, reason });
+    return res;
+  } catch (e) {
+    log.error("TOKEN_REFRESH", "Failed to mark connection expired", { connectionId, provider, error: e?.message });
+    return null;
+  }
+}
+
 // ─── Local-specific: persist credentials to localDb ──────────────────────────
 
 /**
@@ -200,11 +222,15 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
     if (newCredentials.projectId)            updates.projectId = newCredentials.projectId;
 
     const result = await updateProviderConnection(connectionId, updates);
+    if (result?._conflict) {
+      log.warn("TOKEN_REFRESH", "Credentials CAS conflict in localDb", { connectionId });
+      return result;
+    }
     log.info("TOKEN_REFRESH", "Credentials updated in localDb", {
       connectionId,
       success: !!result
     });
-    return !!result;
+    return result || false;
   } catch (error) {
     log.error("TOKEN_REFRESH", "Error updating credentials in localDb", {
       connectionId,
@@ -271,28 +297,53 @@ export async function checkAndRefreshToken(provider, credentials, options = {}) 
     });
 
     const newCreds = await _refreshProviderCredentials(provider, creds, log);
+    if (isUnrecoverableRefreshError(newCreds)) {
+      await markRefreshTokenExpired(creds.connectionId, provider, newCreds);
+      return { ...creds, _refreshExpired: true, _refreshError: newCreds };
+    }
     if (newCreds?.accessToken || newCreds?.apiKey || newCreds?.copilotToken) {
       const mergedCreds = {
         ...newCreds,
         existingProviderSpecificData: creds.providerSpecificData,
       };
 
-      // Persist to DB (non-blocking path continues below)
-      await updateProviderCredentials(creds.connectionId, mergedCreds);
+      // Point 4: single-use/rotated refresh tokens must be persisted atomically.
+      // If another process already rotated this token, CAS conflicts — adopt DB state.
+      const rotated = newCreds.refreshToken && creds.refreshToken && newCreds.refreshToken !== creds.refreshToken;
+      if (rotated) mergedCreds.expectedRefreshToken = creds.refreshToken;
 
-      creds = {
-        ...creds,
-        ...newCreds,
-        expiresAt: newCreds.expiresIn
-          ? toExpiresAt(newCreds.expiresIn)
-          : normalizeExpiresAt(newCreds.expiresAt) || newCreds.expiresAt || creds.expiresAt,
-        providerSpecificData: newCreds.providerSpecificData
-          ? { ...creds.providerSpecificData, ...newCreds.providerSpecificData }
-          : creds.providerSpecificData,
-      };
+      const persisted = await updateProviderCredentials(creds.connectionId, mergedCreds);
+      if (persisted?._conflict) {
+        const latest = persisted.current || await getProviderConnectionById(creds.connectionId).catch(() => null);
+        if (latest) {
+          log.info("TOKEN_REFRESH", "Refresh CAS conflict; adopting DB credentials", { provider, connectionId: creds.connectionId });
+          creds = {
+            ...creds,
+            refreshToken: latest.refreshToken || creds.refreshToken,
+            accessToken: latest.accessToken || creds.accessToken,
+            apiKey: latest.apiKey || creds.apiKey,
+            expiresAt: latest.expiresAt || latest.tokenExpiresAt || creds.expiresAt,
+            lastRefreshAt: latest.lastRefreshAt || creds.lastRefreshAt,
+            providerSpecificData: latest.providerSpecificData
+              ? { ...creds.providerSpecificData, ...latest.providerSpecificData }
+              : creds.providerSpecificData,
+          };
+        }
+      } else {
+        creds = {
+          ...creds,
+          ...newCreds,
+          expiresAt: newCreds.expiresIn
+            ? toExpiresAt(newCreds.expiresIn)
+            : normalizeExpiresAt(newCreds.expiresAt) || newCreds.expiresAt || creds.expiresAt,
+          providerSpecificData: newCreds.providerSpecificData
+            ? { ...creds.providerSpecificData, ...newCreds.providerSpecificData }
+            : creds.providerSpecificData,
+        };
 
-      // Non-blocking: refresh projectId with the new access token
-      _refreshProjectId(provider, creds.connectionId, creds.accessToken);
+        // Non-blocking: refresh projectId with the new access token
+        _refreshProjectId(provider, creds.connectionId, creds.accessToken);
+      }
     }
   }
 

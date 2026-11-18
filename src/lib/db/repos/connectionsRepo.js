@@ -272,7 +272,10 @@ export async function createProviderConnection(data) {
   return result;
 }
 
-// Critical: OAuth refresh token race — atomic merge inside transaction
+// Critical: OAuth refresh token race — atomic merge inside transaction.
+// Supports optional CAS: pass `expectedRefreshToken` to apply the update only
+// when the stored refresh token still matches (prevents overwriting a newer
+// rotated token written by another process — point 4 / single-use tokens).
 export async function updateProviderConnection(id, data) {
   const db = await getAdapter();
   let result;
@@ -280,10 +283,15 @@ export async function updateProviderConnection(id, data) {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) { result = null; return; }
     const existing = rowToConn(row);
-    const normalized = resetHealthStateOnActivation(existing, data);
+    if (data.expectedRefreshToken !== undefined && existing.refreshToken !== data.expectedRefreshToken) {
+      result = { _conflict: true, current: existing };
+      return;
+    }
+    const { expectedRefreshToken: _ert, ...persistData } = data;
+    const normalized = resetHealthStateOnActivation(existing, persistData);
     const merged = { ...existing, ...normalized, updatedAt: new Date().toISOString() };
     upsert(db, merged);
-    if (data.priority !== undefined) reorderInTx(db, existing.provider);
+    if (persistData.priority !== undefined) reorderInTx(db, existing.provider);
     result = merged;
   });
   return result;
