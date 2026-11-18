@@ -6,15 +6,14 @@ import {
 } from "@/shared/utils/freeModelIds.js";
 import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 
-// One-click "Enable Free Models" on the four OpenCode lanes must add exactly the
+// One-click "Enable Free Models" on the OpenCode lanes must add exactly the
 // free tier: every "-free" id (plus the ones upstream never suffixes), nothing paid.
 describe("freeModelIds", () => {
-  it("covers the four OpenCode lanes, each backed by a registry catalogue", () => {
+  it("covers the OpenCode lanes, each backed by a registry catalogue", () => {
     expect(OPENCODE_FREE_PROVIDER_IDS).toEqual([
       "opencode",
       "opencode-free-v2",
       "opencode-zen",
-      "opencode-zen-v2",
     ]);
     // PROVIDER_MODELS is keyed by alias, so resolve the lane first.
     for (const id of OPENCODE_FREE_PROVIDER_IDS) {
@@ -85,13 +84,10 @@ describe("freeModelIds", () => {
   });
 
   it("keeps the static lanes\' free models discoverable", () => {
-    // opencode-zen-v2 ships an empty catalogue and rides the live feed, so only
-    // the lanes with static rows are asserted.
     for (const id of ["opencode", "opencode-free-v2", "opencode-zen"]) {
       const alias = PROVIDER_ID_TO_ALIAS[id] || id;
       const freeIds = (PROVIDER_MODELS[alias] || []).filter((m) => isFreeModelId(m.id)).map((m) => m.id);
       expect(freeIds.length, "no free model in " + id).toBeGreaterThan(0);
     }
-    expect(PROVIDER_MODELS["oczv2"].length).toBe(0);
   });
 });

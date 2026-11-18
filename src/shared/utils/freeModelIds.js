@@ -1,5 +1,5 @@
 /**
- * Free-tier detection for the OpenCode lanes (oc / ocfv2 / ocz / oczv2).
+ * Free-tier detection for the OpenCode lanes (oc / ocfv2 / ocz).
  * Upstream marks the free tier with a "-free" id suffix; one id never carries it
  * (big-pickle), and one used to be dead upstream (deepseek-v4-flash-free).
  */
@@ -7,12 +7,11 @@ const KNOWN_FREE = new Set(["big-pickle"]);
 const DEAD_FREE = new Set(["deepseek-v4-flash-free"]);
 const FREE_SUFFIX_RE = /[-.:/]free$/i;
 
-// The four OpenCode lanes. opencode-zen-v2 reuses opencode-zen's catalogue.
+// The three OpenCode lanes.
 export const OPENCODE_FREE_PROVIDER_IDS = [
   "opencode",
   "opencode-free-v2",
   "opencode-zen",
-  "opencode-zen-v2",
 ];
 
 export function isFreeModelId(id) {

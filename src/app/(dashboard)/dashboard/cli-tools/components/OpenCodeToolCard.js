@@ -45,7 +45,7 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
     if (initialStatus) setStatus(initialStatus);
   }, [initialStatus]);
 
-  // Free lanes across the four OpenCode providers (oc / ocfv2 / ocz / oczv2),
+  // Free lanes across the OpenCode providers (oc / ocfv2 / ocz),
   // resolved with the same rules as the picker so the button cannot offer a
   // model the user disabled or a lane without a connection.
   const loadFreeModels = async () => {

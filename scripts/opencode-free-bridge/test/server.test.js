@@ -601,10 +601,10 @@ describe("server unit & integration tests", () => {
     });
 
     it("forwards a client key for paid models and keeps the public identity for free ones", async () => {
-      // opencode-zen-v2 rides this bridge with a real Zen key. A paid id must
-      // reach upstream as the caller, a free id must keep `Bearer public`, and a
-      // keyed refusal must not be mistaken for a free-tier gate move.
-      const realVerdict = identity.getCatalogVerdict;
+      // A paid id must reach upstream as the caller, a free id must keep
+      // `Bearer public`, and a keyed refusal must not be mistaken for a
+      // free-tier gate move.
+
       identity.getCatalogVerdict = (id) => {
         const lower = String(id).toLowerCase();
         if (lower === "gpt-5.4") return "paid";

@@ -72,8 +72,8 @@ import p68 from "./opencode-go.js";
 import p68z from "./opencode-zen.js";
 import p69 from "./opencode.js";
 import p163 from "./opencode-free-v2.js";
-import p164 from "./opencode-zen-v2.js";
 import p70 from "./openrouter.js";
+
 import p71 from "./perplexity-web.js";
 import p72 from "./perplexity.js";
 import p73 from "./perplexity-agent.js";
@@ -318,8 +318,7 @@ export default [
   p161,
   p162,
   p163,
-  p164,
-  p165,
+
   p167,
   p168,
 ];

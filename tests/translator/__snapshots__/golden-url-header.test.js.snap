@@ -1526,25 +1526,6 @@ exports[`GOLDEN buildHeaders (default executor providers) > opencode-zen → hea
 }
 `;
 
-exports[`GOLDEN buildHeaders (default executor providers) > opencode-zen-v2 → headers (apiKey / oauth) 1`] = `
-{
-  "apiKey": {
-    "Accept": "text/event-stream",
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
-  },
-  "nonStream": {
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
-  },
-  "oauth": {
-    "Accept": "text/event-stream",
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
-  },
-}
-`;
-
 exports[`GOLDEN buildHeaders (default executor providers) > openrouter → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -2540,13 +2521,6 @@ exports[`GOLDEN buildUrl (default executor providers) > opencode-zen → url (st
 {
   "nonStream": "https://opencode.ai/zen/v1/chat/completions",
   "stream": "https://opencode.ai/zen/v1/chat/completions",
-}
-`;
-
-exports[`GOLDEN buildUrl (default executor providers) > opencode-zen-v2 → url (stream + non-stream) 1`] = `
-{
-  "nonStream": "http://127.0.0.1:20135/v1/chat/completions",
-  "stream": "http://127.0.0.1:20135/v1/chat/completions",
 }
 `;
 

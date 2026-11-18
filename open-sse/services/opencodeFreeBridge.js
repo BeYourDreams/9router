@@ -122,7 +122,7 @@ function sidecarPath() {
 }
 
 export function isOpencodeFreeBridgeProvider(provider) {
-  return provider === "opencode-free-v2" || provider === "ocfv2" || provider === "opencode-zen-v2" || provider === "oczv2";
+  return provider === "opencode-free-v2" || provider === "ocfv2";
 }
 
 export function getOpencodeFreeBridgeBaseUrl() {
