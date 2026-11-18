@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { getProxyPoolById, updateProxyPool } from "@/models";
+import { getProxyPoolById, getProxyPools, updateProxyPool } from "@/models";
 import { testProxyUrl } from "@/lib/network/proxyTest";
-import { fetch as undiciFetch } from "undici";
+import { ProxyAgent, fetch as undiciFetch } from "undici";
 
-// Where a relay probe sends its traffic. httpbin.org rate-limits and geo-blocks,
-// so a failing relay can read as a failing httpbin. Override with
-// PROXY_RELAY_TEST_URL (or a `testUrl` in the POST body) — an origin your network
-// definitely reaches, e.g. https://cloudflare.com/cdn-cgi/trace.
-const DEFAULT_RELAY_TEST_URL = "https://httpbin.org/get";
+// Where a relay probe sends its traffic. Override with PROXY_RELAY_TEST_URL
+// (or a `testUrl` in the POST body). Default is a lightweight, globally
+// reachable 200 endpoint (httpbin is rate-limited/geo-blocked in places,
+// which made a healthy relay look broken).
+const DEFAULT_RELAY_TEST_URL = "https://cloudflare.com/cdn-cgi/trace";
 
 function relayTarget(bodyTestUrl) {
   const configured = String(bodyTestUrl || "").trim() || String(process.env.PROXY_RELAY_TEST_URL || "").trim() || DEFAULT_RELAY_TEST_URL;
@@ -20,44 +20,120 @@ function relayTarget(bodyTestUrl) {
   }
 }
 
-async function testVercelRelay(relayUrl, timeoutMs = 10000, bodyTestUrl = "") {
+function relayHint(status, body) {
+  const text = typeof body === "string" ? body : "";
+  if (status === 400 && /Missing x-relay-target header/i.test(text)) {
+    return " Relay endpoint is reachable but not acting as a 9Router-compatible relay (expected x-relay-target/x-relay-path). Redeploy with 9Router or update the worker code.";
+  }
+  if (status === 404) {
+    return " Relay URL not found. Check the worker URL and that its workers.dev route is enabled.";
+  }
+  if (status >= 500 && status < 600) {
+    return " Relay or upstream fetch failed; verify the worker is active and can reach the target URL.";
+  }
+  if (status === 401 || status === 403) {
+    if (/netlify\.com\/edge-access|identity|login/i.test(text)) {
+      return " Netlify site access protection is enabled. Disable Visitor/Password protection for this site (or allow public access to the function) in Netlify settings.";
+    }
+    return " Access denied; if this is the Cloudflare dashboard rather than your worker, the URL/route is wrong.";
+  }
+  return "";
+}
+
+function normalizeProxyUrl(raw) {
+  const s = typeof raw === "string" ? raw.trim() : "";
+  if (!s) return "";
+  try { new URL(s); return s; } catch { return `http://${s}`; }
+}
+
+async function relayFallbackProxyUrls(excludePoolId) {
+  const urls = [];
+  const env = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy || process.env.ALL_PROXY || process.env.all_proxy || "";
+  if (env.trim()) urls.push(normalizeProxyUrl(env));
+  try {
+    const pools = await getProxyPools({ isActive: true });
+    for (const p of pools || []) {
+      if (!p || p.id === excludePoolId) continue;
+      const t = p.type || "http";
+      if (t !== "http") continue; // ponytail: only plain HTTP proxies can carry relay HTTPS; relays can't reach relays.
+      const u = normalizeProxyUrl(p.proxyUrl);
+      if (u) urls.push(u);
+    }
+  } catch {}
+  return [...new Set(urls)].filter(Boolean);
+}
+
+async function doRelayFetch(relayUrl, headers, timeoutMs, dispatcher) {
   const controller = new AbortController();
   const startedAt = Date.now();
   const timer = setTimeout(() => controller.abort(new Error("Relay test timed out")), timeoutMs);
-  const { target, path } = relayTarget(bodyTestUrl);
   try {
     const res = await undiciFetch(relayUrl, {
       method: "GET",
-      headers: {
-        "x-relay-target": target,
-        "x-relay-path": path,
-        "user-agent": "9Router-Test",
-      },
+      headers,
       signal: controller.signal,
+      ...(dispatcher ? { dispatcher } : {}),
     });
-    const ok = res.ok;
     let body = "";
-    try {
-      body = await res.text();
-    } catch {
-      // ignore
-    }
+    try { body = await res.text(); } catch {}
     return {
-      ok,
+      networkOk: true,
+      ok: res.ok,
       status: res.status,
       statusText: res.statusText,
       elapsedMs: Date.now() - startedAt,
-      error: ok ? undefined : (body.slice(0, 200) || `Relay test failed with status ${res.status}`),
+      body,
     };
   } catch (err) {
-    return {
-      ok: false,
-      status: 500,
-      error: err?.name === "AbortError" || err?.message?.includes("timed out") ? "Relay test timed out" : (err?.message || String(err)),
-    };
+    const msg = err?.name === "AbortError" || err?.message?.includes("timed out")
+      ? "Relay test timed out"
+      : (err?.message || String(err));
+    return { networkOk: false, ok: false, status: 0, error: msg, elapsedMs: Date.now() - startedAt };
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function testVercelRelay(relayUrl, timeoutMs = 10000, bodyTestUrl = "", excludePoolId = null) {
+  const { target, path } = relayTarget(bodyTestUrl);
+  const headers = {
+    "x-relay-target": target,
+    "x-relay-path": path,
+    "user-agent": "9Router-Test",
+  };
+
+  let result = await doRelayFetch(relayUrl, headers, timeoutMs);
+  let via = "direct";
+
+  // ponytail: if relay endpoint is unreachable directly (blocked workers.dev/vercel.app etc), retry via env/active HTTP proxy pools.
+  if (!result.networkOk) {
+    const fallbacks = await relayFallbackProxyUrls(excludePoolId);
+    for (const proxyUrl of fallbacks) {
+      let dispatcher;
+      try { dispatcher = new ProxyAgent({ uri: proxyUrl, connect: { timeout: Math.min(timeoutMs, 8000) } }); } catch { continue; }
+      try {
+        const r = await doRelayFetch(relayUrl, headers, timeoutMs, dispatcher);
+        if (r.networkOk || r.ok) { result = r; via = "proxy"; break; }
+        // keep last network error, but prefer any attempt that actually reached the endpoint
+        if (!result.networkOk) result = r;
+      } finally {
+        try { await dispatcher.destroy?.(); await dispatcher.close?.(); } catch {}
+      }
+    }
+  }
+
+  if (!result.networkOk) {
+    return { ok: false, status: 500, error: result.error || "Relay unreachable", elapsedMs: result.elapsedMs, via };
+  }
+  const baseErr = (result.body || "").slice(0, 200) || `Relay test failed with status ${result.status}`;
+  return {
+    ok: result.ok,
+    status: result.status,
+    statusText: result.statusText || null,
+    elapsedMs: result.elapsedMs || 0,
+    via,
+    error: result.ok ? undefined : baseErr + relayHint(result.status, result.body),
+  };
 }
 
 // POST /api/proxy-pools/[id]/test - Test proxy pool entry
@@ -74,8 +150,9 @@ export async function POST(request, { params }) {
     let bodyTestUrl = "";
     try { bodyTestUrl = (await request.json())?.testUrl || ""; } catch { /* body optional */ }
 
-    const result = proxyPool.type === "vercel" || proxyPool.type === "cloudflare" || proxyPool.type === "deno" || proxyPool.type === "netlify"
-      ? await testVercelRelay(proxyPool.proxyUrl, 10000, bodyTestUrl)
+    const isRelay = proxyPool.type === "vercel" || proxyPool.type === "cloudflare" || proxyPool.type === "deno" || proxyPool.type === "netlify";
+    const result = isRelay
+      ? await testVercelRelay(proxyPool.proxyUrl, 10000, bodyTestUrl, proxyPool.id)
       : await testProxyUrl({ proxyUrl: proxyPool.proxyUrl });
     const now = new Date().toISOString();
 
@@ -92,6 +169,7 @@ export async function POST(request, { params }) {
       statusText: result.statusText || null,
       error: result.error || null,
       elapsedMs: result.elapsedMs || 0,
+      via: result.via || "direct",
       testedAt: now,
     });
   } catch (error) {

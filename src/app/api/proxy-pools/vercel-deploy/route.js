@@ -107,14 +107,16 @@ export async function POST(request) {
     const relayUrl = `https://${ready.url}/api/relay`;
     const pool = await createProxyPool({
       name: projectName,
-      provider: "vercel-relay",
-      config: { relayUrl, vercelToken, projectId: deployData.projectId },
-      enabled: true,
+      proxyUrl: relayUrl,
+      type: "vercel",
+      noProxy: "",
+      isActive: true,
+      strictProxy: false,
     });
 
     return NextResponse.json({
-      pool,
-      relayUrl,
+      proxyPool: pool,
+      deployUrl: relayUrl,
       deployment: { id: deploymentId, url: ready.url },
     });
   } catch (error) {

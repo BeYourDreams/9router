@@ -15,7 +15,7 @@ export default {
       });
     }
 
-    const base = target.replace(//$/, "");
+    const base = target.endsWith("/") ? target.slice(0, -1) : target;
     const targetUrl = relayPath.startsWith("http") ? relayPath : base + relayPath;
 
     const headers = new Headers(request.headers);
@@ -26,10 +26,12 @@ export default {
     const init = {
       method: request.method,
       headers,
+      redirect: "follow",
     };
 
     if (request.method !== "GET" && request.method !== "HEAD") {
       init.body = request.body;
+      init.duplex = "half";
     }
 
     try {
@@ -48,6 +50,11 @@ export default {
 };
 `;
 
+function cfErrorMessage(payload, fallback) {
+  const msg = payload?.errors?.[0]?.message || payload?.error || payload?.message;
+  return typeof msg === "string" && msg.trim() ? msg : fallback;
+}
+
 // POST /api/proxy-pools/cloudflare-deploy
 export async function POST(request) {
   try {
@@ -62,29 +69,40 @@ export async function POST(request) {
 
     // 1. Upload Worker Script
     const workerScriptUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${projectName}`;
-    
-    // Cloudflare requires multipart/form-data for worker script upload
-    const formData = new FormData();
-    formData.append("index.js", new Blob([RELAY_WORKER_CODE], { type: "application/javascript+module" }), "index.js");
-    formData.append("metadata", new Blob([JSON.stringify({
+
+    // ponytail: manual multipart — global FormData/fetch can omit/garble the boundary in some runtimes,
+    // causing Cloudflare 10001 'Content-Type must be ... multipart/form-data'. Ceiling: no file uploads; upgrade: form-data pkg.
+    const boundary = "----9router" + Date.now().toString(36) + Math.random().toString(36).slice(2);
+    const metadata = JSON.stringify({
       main_module: "index.js",
       compatibility_date: "2024-03-20",
-      observability: { enabled: true }
-    })], { type: "application/json" }), "metadata.json");
+      observability: { enabled: true },
+    });
+    const uploadBody =
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="metadata"; filename="metadata.json"\r\n` +
+      `Content-Type: application/json\r\n\r\n` +
+      metadata + `\r\n` +
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="index.js"; filename="index.js"\r\n` +
+      `Content-Type: application/javascript+module\r\n\r\n` +
+      RELAY_WORKER_CODE + `\r\n` +
+      `--${boundary}--\r\n`;
 
     const uploadRes = await fetch(workerScriptUrl, {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${apiToken}`,
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
       },
-      body: formData,
+      body: uploadBody,
     });
 
     if (!uploadRes.ok) {
       const err = await uploadRes.json().catch(() => ({}));
       console.error("Cloudflare upload error:", err);
       return NextResponse.json(
-        { error: err.errors?.[0]?.message || "Failed to upload Worker to Cloudflare" },
+        { error: cfErrorMessage(err, "Failed to upload Worker to Cloudflare") },
         { status: uploadRes.status }
       );
     }
@@ -102,11 +120,17 @@ export async function POST(request) {
     if (!enableSubdomainRes.ok) {
       const err = await enableSubdomainRes.json().catch(() => ({}));
       console.error("Cloudflare subdomain enable error:", err);
-      // We don't fail completely here, just continue
+      return NextResponse.json(
+        {
+          error:
+            cfErrorMessage(err, "Failed to enable workers.dev route for the Worker") +
+            ". Worker script was uploaded, but the relay URL is not active. Check that your account has a workers.dev subdomain and the API token can edit Workers Scripts.",
+        },
+        { status: enableSubdomainRes.status }
+      );
     }
 
     // 3. Get the workers.dev subdomain for the account to construct the final URL
-    let deployUrl = "";
     const subdomainRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`, {
       method: "GET",
       headers: {
@@ -115,16 +139,29 @@ export async function POST(request) {
       },
     });
 
+    let deployUrl = "";
     if (subdomainRes.ok) {
-      const subdomainData = await subdomainRes.json();
-      if (subdomainData.result && subdomainData.result.subdomain) {
-        deployUrl = `https://${projectName}.${subdomainData.result.subdomain}.workers.dev`;
+      const subdomainData = await subdomainRes.json().catch(() => ({}));
+      const subdomain = subdomainData?.result?.subdomain;
+      if (typeof subdomain === "string" && subdomain.trim()) {
+        deployUrl = `https://${projectName}.${subdomain.trim()}.workers.dev`;
       }
+    } else {
+      const err = await subdomainRes.json().catch(() => ({}));
+      console.error("Cloudflare subdomain lookup error:", err);
+      return NextResponse.json(
+        {
+          error:
+            cfErrorMessage(err, "Failed to retrieve workers.dev subdomain") +
+            ". Worker script was uploaded. Set up a workers.dev subdomain in Cloudflare Dashboard, then add the relay URL manually if needed.",
+        },
+        { status: subdomainRes.status }
+      );
     }
 
     if (!deployUrl) {
-       return NextResponse.json(
-        { error: "Worker deployed but failed to retrieve workers.dev subdomain. Make sure you have setup a workers.dev subdomain in Cloudflare Dashboard." },
+      return NextResponse.json(
+        { error: "Worker deployed but no workers.dev subdomain is configured for this account. Set one in Cloudflare Dashboard (Workers & Pages → workers.dev), then redeploy or add the relay URL manually." },
         { status: 400 }
       );
     }

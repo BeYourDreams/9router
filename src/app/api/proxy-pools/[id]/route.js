@@ -3,6 +3,7 @@ import {
   deleteProxyPool,
   getProviderConnections,
   getProxyPoolById,
+  updateProviderConnection,
   updateProxyPool,
 } from "@/models";
 
@@ -102,20 +103,31 @@ export async function DELETE(request, { params }) {
     }
 
     const connections = await getProviderConnections();
-    const boundConnectionCount = countBoundConnections(connections, id);
+    const boundConnections = connections.filter((connection) => connection?.providerSpecificData?.proxyPoolId === id);
+    const boundConnectionCount = boundConnections.length;
 
     if (boundConnectionCount > 0) {
-      return NextResponse.json(
-        {
-          error: "Proxy pool is currently in use",
-          boundConnectionCount,
-        },
-        { status: 409 }
-      );
+      const force = request.nextUrl?.searchParams?.get("force") === "true"
+        || request.nextUrl?.searchParams?.get("unbind") === "true";
+      if (!force) {
+        return NextResponse.json(
+          {
+            error: "Proxy pool is currently in use",
+            boundConnectionCount,
+          },
+          { status: 409 }
+        );
+      }
+
+      for (const connection of boundConnections) {
+        const providerSpecificData = { ...(connection.providerSpecificData || {}) };
+        delete providerSpecificData.proxyPoolId;
+        await updateProviderConnection(connection.id, { providerSpecificData });
+      }
     }
 
     await deleteProxyPool(id);
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, unboundConnectionCount: boundConnectionCount });
   } catch (error) {
     console.log("Error deleting proxy pool:", error);
     return NextResponse.json({ error: "Failed to delete proxy pool" }, { status: 500 });

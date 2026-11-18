@@ -10,7 +10,7 @@ import {
 } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
 
-import { normalizeString, normalizeProxyUrl, resolveEffectiveProxyUrl } from "./proxyResolution.js";
+import { normalizeString, normalizeProxyUrl, resolveEffectiveProxyUrl, getEnvProxyUrl } from "./proxyResolution.js";
 import { ensureClaudeCliVersion, applyClaudeCliVersion } from "./claudeCliVersion.js";
 
 const CLAUDE_UA_PROBE = /claude-cli\/\d/;
@@ -465,7 +465,23 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       "x-relay-target": `${parsed.protocol}//${parsed.host}`,
       "x-relay-path": `${parsed.pathname}${parsed.search}`,
     };
-    return await rawFetch(vercelRelayUrl, { ...options, headers: relayHeaders });
+    // ponytail: relay is the transport — never route relay fetch through a pool dispatcher; duplex needed for streamed bodies.
+    const { dispatcher: _dropDispatcher, ...relayOptions } = options || {};
+    if (relayOptions.body != null && relayOptions.duplex == null) relayOptions.duplex = "half";
+    try {
+      return await rawFetch(vercelRelayUrl, { ...relayOptions, headers: relayHeaders });
+    } catch (relayErr) {
+      // ponytail: reach relay via env proxy when direct path is blocked (e.g. workers.dev); ceiling: non-replayable bodies.
+      if (relayOptions.signal?.aborted || !isBodyReplaySafe(relayOptions.body)) throw relayErr;
+      const envProxy = normalizeProxyUrl(getEnvProxyUrl(vercelRelayUrl));
+      if (!envProxy) throw relayErr;
+      try {
+        const dispatcher = await getDispatcher(envProxy, false, false);
+        return await rawFetch(vercelRelayUrl, { ...relayOptions, headers: relayHeaders, dispatcher });
+      } catch {
+        throw relayErr;
+      }
+    }
   }
 
   const { url: proxyUrl } = resolveEffectiveProxyUrl(targetUrl, proxyOptions);

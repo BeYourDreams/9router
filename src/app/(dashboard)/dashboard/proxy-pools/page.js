@@ -165,7 +165,27 @@ export default function ProxyPoolsPage() {
 
           const data = await res.json();
           if (res.status === 409) {
-            notify.warning(`Cannot delete: ${data.boundConnectionCount || 0} connection(s) are still using this pool.`);
+            const count = data.boundConnectionCount || 0;
+            setConfirmState({
+              title: "Proxy Pool In Use",
+              message: `${count} connection(s) are still using this pool. Unbind them and delete?`,
+              onConfirm: async () => {
+                setConfirmState(null);
+                try {
+                  const r2 = await fetch(`/api/proxy-pools/${proxyPool.id}?force=true`, { method: "DELETE" });
+                  const d2 = await r2.json().catch(() => ({}));
+                  if (r2.ok) {
+                    setProxyPools((prev) => prev.filter((item) => item.id !== proxyPool.id));
+                    notify.success("Proxy pool deleted (connections unbound)");
+                  } else {
+                    notify.error(d2.error || "Failed to delete proxy pool");
+                  }
+                } catch (error) {
+                  console.log("Error force deleting proxy pool:", error);
+                  notify.error("Failed to delete proxy pool");
+                }
+              }
+            });
           } else {
             notify.error(data.error || "Failed to delete proxy pool");
           }
