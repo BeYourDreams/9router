@@ -8,6 +8,7 @@ const fx = vi.hoisted(() => ({
     { id: "p2", name: "P2", proxyUrl: "http://127.0.0.1:2", isActive: true },
   ],
   attempts: [],
+  succeedIds: new Set(),
 }));
 
 vi.mock("@/lib/localDb", () => ({
@@ -36,10 +37,13 @@ vi.mock("@/lib/db/repos/apiKeysRepo.js", () => ({ getApiKeyByKey: async () => nu
 vi.mock("@/lib/db/repos/combosRepo.js", () => ({ getCombos: async () => [] }));
 vi.mock("@/lib/usageDb.js", () => ({ saveRequestUsage: vi.fn() }));
 vi.mock("open-sse/handlers/chatCore.js", () => ({
-  handleChatCore: async ({ credentials }) => {
+  handleChatCore: async ({ credentials, onRequestSuccess }) => {
     const id = credentials?.providerSpecificData?.connectionProxyPoolId || "direct";
     fx.attempts.push(id);
-    if (id === "direct") return { success: true, response: new Response("ok", { status: 200 }) };
+    if (id === "direct" || fx.succeedIds.has(id)) {
+      await onRequestSuccess?.();
+      return { success: true, response: new Response("ok", { status: 200 }) };
+    }
     return {
       success: false,
       status: 429,
@@ -60,7 +64,7 @@ const chatRequest = () => new Request("http://localhost/v1/chat/completions", {
   }),
 });
 
-beforeEach(() => { fx.attempts = []; });
+beforeEach(() => { fx.attempts = []; fx.succeedIds = new Set(); });
 
 describe("no-auth proxy rotation 429 fallback", () => {
   it("tries each rotated pool, then direct (free v2 included)", async () => {
@@ -73,5 +77,13 @@ describe("no-auth proxy rotation 429 fallback", () => {
     const { default: v1 } = await import("../../open-sse/providers/registry/opencode.js");
     const { default: v2 } = await import("../../open-sse/providers/registry/opencode-free-v2.js");
     expect(v2.modelsFetcher).toEqual(v1.modelsFetcher);
+  });
+
+  it("starts the next request from the pool that just succeeded", async () => {
+    fx.succeedIds = new Set(["p2"]);
+    await handleChat(chatRequest());
+    fx.attempts = [];
+    await handleChat(chatRequest());
+    expect(fx.attempts).toEqual(["p2"]);
   });
 });

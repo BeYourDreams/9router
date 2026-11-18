@@ -7,11 +7,16 @@ function normalizeString(value) {
 }
 
 // ─── Proxy pool rotation state (in-memory) ─────────────────────────
-const rotateState = new Map(); // providerId → { index }
+const lastSuccessPoolIds = new Map(); // providerId → pool id of last successful request
+
+/** Remember the pool that served a successful request. */
+export function rememberProxyPoolSuccess(providerId, poolId) {
+  if (providerId && poolId) lastSuccessPoolIds.set(providerId, poolId);
+}
 
 /**
  * Pick one proxy pool ID from a list based on strategy.
- * round-robin: cycle sequentially (in-memory, resets on restart)
+ * round-robin: start from the last successful pool (in-memory, resets on restart)
  * random:      uniform random pick
  * none/single: return first entry
  */
@@ -20,10 +25,8 @@ export function pickProxyPoolId(poolIds, strategy, providerId) {
   if (poolIds.length === 1) return poolIds[0];
 
   if (strategy === "round-robin") {
-    const state = rotateState.get(providerId) || { index: -1 };
-    state.index = (state.index + 1) % poolIds.length;
-    rotateState.set(providerId, state);
-    return poolIds[state.index];
+    const lastIndex = poolIds.indexOf(lastSuccessPoolIds.get(providerId));
+    return poolIds[lastIndex === -1 ? 0 : lastIndex];
   }
 
   if (strategy === "random") {
