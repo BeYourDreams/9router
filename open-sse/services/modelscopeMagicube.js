@@ -254,9 +254,13 @@ export function buildModelScopeUsage({ balance, rules, earnedToday, balanceCents
   }
 
   const allDaily = Array.isArray(rules?.dailyRules) ? rules.dailyRules : [];
-  // Unbound accounts are excluded: their 绑定增额 cannot be earned by logging in.
-  const daily = allDaily.filter((r) => r.bound !== false);
-  const unboundAliyun = allDaily.find((r) => r.key === ALIYUN_RULE_KEY && r.bound === false);
+  // The daily entitlement is 200 + 50 for every account: ModelScope lists the
+  // 绑定阿里云 50/日 rule even for unbound accounts, and the row must read
+  // "250 魔粒/日" — an account that has not bound Aliyun simply never fills the
+  // last 50, which the row's message explains.
+  const daily = allDaily;
+  const aliyunRule = allDaily.find((r) => r.key === ALIYUN_RULE_KEY);
+  const unboundAliyun = aliyunRule?.bound === false ? aliyunRule : undefined;
   const todayCap = daily.reduce((sum, r) => sum + (r.dailyCap > 0 ? r.amount : 0), 0);
   const todayDone = daily.reduce(
     (sum, r) => sum + (r.dailyCap > 0 ? Math.min(r.todayUsed, r.dailyCap) * r.amount : 0),
@@ -281,7 +285,7 @@ export function buildModelScopeUsage({ balance, rules, earnedToday, balanceCents
           message: rules?.emailVerified === false
             ? `未领取 ${left} 魔粒 — 需先完成邮箱验证，每日登录后自动到账`
             : unboundAliyun
-              ? `未领取 ${left} 魔粒 — 每日登录后自动到账（绑定阿里云账号每日再 +${unboundAliyun.amount} 魔粒）`
+              ? `未领取 ${left} 魔粒 — 绑定阿里云账号后每日登录自动到账（+${unboundAliyun.amount}/日）`
               : `未领取 ${left} 魔粒 — 每日登录后自动到账`,
         }
         : {}),
@@ -307,11 +311,11 @@ export function buildModelScopeUsage({ balance, rules, earnedToday, balanceCents
 
   return {
     quotas,
-    plan: daily.some((r) => r.key === ALIYUN_RULE_KEY)
-      ? "魔搭 · 已绑定阿里云"
+    plan: !aliyunRule
+      ? "魔搭 · 免费"
       : unboundAliyun
         ? `魔搭 · 免费 · 绑阿里云 +${unboundAliyun.amount}/日`
-        : "魔搭 · 免费",
+        : "魔搭 · 已绑定阿里云",
     ...(balance ? { user: `余额 ${balance.total} 魔粒` } : {}),
     ...(balanceCents ? { message: balanceCents } : {}),
   };

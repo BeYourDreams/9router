@@ -68,14 +68,16 @@ describe("ModelScope usage rows", () => {
     expect(buildModelScopeUsage({}).message).toMatch(/no Magicube data/);
   });
 
-  it("excludes the Aliyun bonus an unbound account can never earn", () => {
+  it("still reads 250/日 for an account that has not bound Aliyun", () => {
     const unbound = { dailyRules: [
       { key: "daily_active", amount: 200, dailyCap: 1, todayUsed: 1, todayEarned: 200, bound: true },
       { key: "aliyun_bindlogin", amount: 50, dailyCap: 1, todayUsed: 0, todayEarned: 0, bound: false },
     ], creditedToday: true, todayEarned: 200 };
     const { quotas, plan } = buildModelScopeUsage({ balance: { total: 177, available: 177, frozen: 0 }, rules: unbound });
-    expect(quotas["今日魔粒"]).toMatchObject({ total: 200, used: 200, remainingPercentage: 0 });
-    expect(quotas["今日魔粒"].message).toBeUndefined();
+    // The 50 Aliyun bonus is listed for every account, so the cap stays 250 and
+    // the row explains why the last 50 never lands.
+    expect(quotas["今日魔粒"]).toMatchObject({ total: 250, used: 200, remainingPercentage: 20 });
+    expect(quotas["今日魔粒"].message).toMatch(/未领取 50 魔粒.*绑定阿里云/);
     expect(plan).toBe("魔搭 · 免费 · 绑阿里云 +50/日");
   });
 

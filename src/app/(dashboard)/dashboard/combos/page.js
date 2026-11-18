@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -77,6 +78,7 @@ export default function CombosPage() {
   const { getCaps } = useModelCaps();
   const [confirmState, setConfirmState] = useState(null);
   const [presetLoading, setPresetLoading] = useState(null); // "cursor" | "claude" | null
+  const [resetAllBusy, setResetAllBusy] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -302,25 +304,25 @@ export default function CombosPage() {
     });
   };
 
-  // Reset the combo's ordering state so the next request starts at the first
-  // model of its list again (sticky fallback pointer / round-robin index).
-  const handleResetOrder = async (combo) => {
+  // Reset every combo's ordering state so the next request starts at the first
+  // model of each list again (sticky fallback pointer / round-robin index).
+  const handleResetAll = async () => {
+    setResetAllBusy(true);
     try {
       const res = await fetch("/api/combos/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: combo.name }),
+        body: JSON.stringify({}),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         alert(err.error || "Failed to reset fallback order");
-        return false;
       }
-      return true;
     } catch (error) {
       console.log("Error resetting combo order:", error);
       alert("Failed to reset fallback order");
-      return false;
+    } finally {
+      setResetAllBusy(false);
     }
   };
 
@@ -453,9 +455,22 @@ export default function CombosPage() {
               </button>
             )}
           </div>
-          <Button icon="add" onClick={() => setShowCreateModal(true)} className="w-full sm:w-auto whitespace-nowrap">
-            Create Combo
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:w-auto">
+            <Button
+              variant="secondary"
+              icon="restart_alt"
+              loading={resetAllBusy}
+              disabled={resetAllBusy || combos.length === 0}
+              onClick={handleResetAll}
+              className="w-full sm:w-auto whitespace-nowrap"
+              title="Reset every combo's fallback order — the next request starts at the first model of each combo again"
+            >
+              Reset All
+            </Button>
+            <Button icon="add" onClick={() => setShowCreateModal(true)} className="w-full sm:w-auto whitespace-nowrap">
+              Create Combo
+            </Button>
+          </div>
           <div className="hidden">
             <Button
               variant="secondary"
@@ -590,8 +605,7 @@ export default function CombosPage() {
                   onCopy={copy}
                   onEdit={() => setEditingCombo(combo)}
                   onDelete={() => handleDelete(combo.id)}
-                  onResetOrder={handleResetOrder}
-                  strategy={comboStrategies[combo.name] || {}}
+
                   onSetStrategy={(patch) => handleSetComboStrategy(combo.name, patch)}
                   selected={selectedIds.includes(combo.id)}
                   onToggleSelect={() => toggleSelect(combo.id)}
@@ -678,23 +692,10 @@ function getRouterModelStatus(routerModel, activeProviders) {
   return { ready: false, label: "Not configured", providerId };
 }
 
-function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, onResetOrder, strategy = {}, onSetStrategy, selected = false, onToggleSelect }) {
+function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, selected = false, onToggleSelect }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
   const [showRouterSelect, setShowRouterSelect] = useState(false);
   const [showPolicyModal, setShowPolicyModal] = useState(false);
-  const [resetState, setResetState] = useState("idle"); // "idle" | "busy" | "done"
-
-  const handleResetOrderClick = async () => {
-    if (resetState === "busy") return;
-    setResetState("busy");
-    const ok = await onResetOrder(combo);
-    if (!ok) {
-      setResetState("idle");
-      return;
-    }
-    setResetState("done");
-    setTimeout(() => setResetState("idle"), 1500);
-  };
 
   const current = strategy.fallbackStrategy || "fallback";
   const judge = strategy.judgeModel || "";
@@ -838,7 +839,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
             />
           </div>
 
-          <div className="grid grid-cols-4 gap-1 sm:flex">
+          <div className="grid grid-cols-3 gap-1 sm:flex">
             <button
               onClick={(e) => { e.stopPropagation(); onCopy(combo.name, `combo-${combo.id}`); }}
               className="flex flex-col items-center rounded px-2 py-1 text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5"
@@ -848,17 +849,6 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
                 {copied === `combo-${combo.id}` ? "check" : "content_copy"}
               </span>
               <span className="text-[10px] leading-tight">Copy</span>
-            </button>
-            <button
-              onClick={handleResetOrderClick}
-              disabled={resetState === "busy" || combo.models.length === 0}
-              className="flex flex-col items-center rounded px-2 py-1 text-text-muted transition-colors hover:bg-black/5 hover:text-primary dark:hover:bg-white/5 disabled:opacity-50 disabled:hover:bg-transparent"
-              title="Reset fallback order — the next request starts at the first model again"
-            >
-              <span className={`material-symbols-outlined text-[18px] ${resetState === "busy" ? "animate-spin" : ""}`}>
-                {resetState === "busy" ? "progress_activity" : resetState === "done" ? "check" : "restart_alt"}
-              </span>
-              <span className="text-[10px] leading-tight">Reset</span>
             </button>
             <button
               onClick={onEdit}

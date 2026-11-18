@@ -55,4 +55,19 @@ describe("combo fallback — manual order reset", () => {
     expect((await run(afterReset)).status).toBe(200);
     expect(afterReset.mock.calls.map(([, m]) => m)).toEqual([MODELS[0]]);
   });
+
+  it("drops every combo's order when no name is given (the Reset All button)", async () => {
+    const failFirst = vi.fn(async (_b, m) => (m === MODELS[0] ? requestScoped400() : ok()));
+    expect((await run(failFirst)).status).toBe(200);
+    const sticky = vi.fn(async () => ok());
+    expect((await run(sticky)).status).toBe(200);
+    expect(sticky.mock.calls.map(([, m]) => m)).toEqual([MODELS[1]]);
+
+    // No name = reset every combo (the dashboard's Reset All).
+    resetComboRotation();
+
+    const afterResetAll = vi.fn(async () => ok());
+    expect((await run(afterResetAll)).status).toBe(200);
+    expect(afterResetAll.mock.calls.map(([, m]) => m)).toEqual([MODELS[0]]);
+  });
 });
