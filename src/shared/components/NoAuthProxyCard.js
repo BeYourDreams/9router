@@ -9,7 +9,7 @@ import Badge from "./Badge";
 const NONE_PROXY_POOL_VALUE = "__none__";
 const STRATEGIES = [
   { value: "none", label: "None (single pool)" },
-  { value: "round-robin", label: "Round (last success first)" },
+  { value: "round-robin", label: "Round (direct first, last success next)" },
   { value: "random", label: "Random" },
 ];
 
@@ -73,7 +73,7 @@ export default function NoAuthProxyCard({ providerId }) {
     save(proxyPoolId, newStrategy);
   };
 
-  const canRotate = proxyPools.length >= 2;
+  const canRotate = proxyPools.length >= 1;
   const isRotation = rotateStrategy !== "none";
 
   return (
@@ -117,10 +117,10 @@ export default function NoAuthProxyCard({ providerId }) {
         </select>
         <p className="text-xs text-text-muted">
           {!canRotate
-            ? `Need at least 2 active proxy pools for rotation.`
+            ? `Need at least 1 active proxy pool for rotation.`
             : isRotation
               ? rotateStrategy === "round-robin"
-                ? `Starts with the proxy that handled the last successful request; moves to the next active pool only when it is rate-limited. State is in-memory (resets on restart).`
+                ? `Tries direct first; on a 429 it continues with the last successful proxy, then the remaining pools. Each new request starts direct again.`
                 : `Picking a random pool from ${proxyPools.length} active pools each request.`
               : `Uses the selected pool above. Set to Round or Random to rotate across all active pools.`}
         </p>

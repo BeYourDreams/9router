@@ -1,4 +1,3 @@
-import { getProxyPoolById } from "@/models";
 
 // Safely normalize any value into a trimmed string.
 function normalizeString(value) {
@@ -6,34 +5,32 @@ function normalizeString(value) {
   return String(value).trim();
 }
 
-// ─── Proxy pool rotation state (in-memory) ─────────────────────────
-const lastSuccessPoolIds = new Map(); // providerId → pool id of last successful request
+// Sentinel for the direct (no-proxy) lane in round rotation.
+export const DIRECT_POOL_ID = "__none__";
 
-/** Remember the pool that served a successful request. */
+const lastSuccessPoolIds = new Map(); // providerId → pool id of last successful proxied request
+
+/** Remember the pool that served a successful proxied request (direct is ignored). */
 export function rememberProxyPoolSuccess(providerId, poolId) {
-  if (providerId && poolId) lastSuccessPoolIds.set(providerId, poolId);
+  if (providerId && poolId && poolId !== DIRECT_POOL_ID) lastSuccessPoolIds.set(providerId, poolId);
 }
 
 /**
- * Pick one proxy pool ID from a list based on strategy.
- * round-robin: start from the last successful pool (in-memory, resets on restart)
- * random:      uniform random pick
- * none/single: return first entry
+ * Pick the next egress, skipping exclusions.
+ * round-robin: direct first, then last successful pool, then pools in order
+ * random:      uniform random pool
+ * none:        first pool
  */
-export function pickProxyPoolId(poolIds, strategy, providerId) {
-  if (!poolIds || poolIds.length === 0) return null;
-  if (poolIds.length === 1) return poolIds[0];
-
+export function pickProxyPoolId(poolIds, strategy, providerId, excludeProxyPoolIds = new Set()) {
+  const pools = (poolIds || []).filter(id => id && !excludeProxyPoolIds.has(id));
   if (strategy === "round-robin") {
-    const lastIndex = poolIds.indexOf(lastSuccessPoolIds.get(providerId));
-    return poolIds[lastIndex === -1 ? 0 : lastIndex];
+    if (!excludeProxyPoolIds.has(DIRECT_POOL_ID)) return DIRECT_POOL_ID;
+    const last = lastSuccessPoolIds.get(providerId);
+    return last && pools.includes(last) ? last : (pools[0] || null);
   }
-
-  if (strategy === "random") {
-    return poolIds[Math.floor(Math.random() * poolIds.length)];
-  }
-
-  return poolIds[0]; // "none" or unknown
+  if (pools.length === 0) return null;
+  if (strategy === "random") return pools[Math.floor(Math.random() * pools.length)];
+  return pools[0];
 }
 
 /**
@@ -101,7 +98,7 @@ export async function resolveConnectionProxyConfig(
 
     // "__none__" means explicitly disabled
     const proxyPoolId =
-      proxyPoolIdRaw === "__none__" ? "" : proxyPoolIdRaw;
+      proxyPoolIdRaw === DIRECT_POOL_ID ? "" : proxyPoolIdRaw;
 
     const legacy = normalizeLegacyProxy(providerSpecificData);
 
@@ -117,6 +114,7 @@ export async function resolveConnectionProxyConfig(
      * -----------------------------
      */
     if (proxyPoolId) {
+      const { getProxyPoolById } = await import("@/models");
       const proxyPool = await getProxyPoolById(proxyPoolId);
 
       const proxyUrl = normalizeString(proxyPool?.proxyUrl);
