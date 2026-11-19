@@ -146,11 +146,47 @@ describe("minimax-code usage handler", () => {
     });
     expect(out.plan).toBe("M Plan pro");
     expect(out.user).toBe("123");
-    expect(out.quotas.Credits.isCreditBalance).toBe(true);
+    // First read: the balance itself is the peak, so the bar starts full.
+    expect(out.quotas.Credits.used).toBe(0);
     expect(out.quotas.Credits.total).toBe(1234.5);
+    expect(out.quotas.Credits.remainingPercentage).toBe(100);
+    expect(out.quotas.Credits.unit).toBe("credits");
+    expect(out.creditPeak).toBe(1234.5);
     const windowRows = Object.values(out.quotas).filter((q) => (q.name || "").includes("hours") || (q.name || "").includes("7 days"));
     expect(windowRows.length).toBe(1);
     expect(windowRows[0].remaining).toBe(50);
+  });
+
+  it("turns the remembered peak into a used-percentage bar once credits are spent", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("get_user_extra_info")) {
+        return new Response(JSON.stringify({
+          workspaces: [{ workspace_type: 0, workspace_id: 7, has_token_plan: false, op_credit_summary: { total_remaining_amount: "1500" } }],
+        }), { status: 200 });
+      }
+      if (u.includes("get_membership_info")) {
+        return new Response(JSON.stringify({ data: { has_token_plan: false, op_credit_summary: { total_remaining_amount: "1500" } } }), { status: 200 });
+      }
+      return new Response("{}", { status: 404 });
+    });
+
+    const out = await getMiniMaxCodeUsage({
+      provider: "minimax-code",
+      accessToken: "tok",
+      providerSpecificData: { realUserID: "123", minimaxCreditPeak: 3000 },
+    });
+    expect(out.quotas.Credits.used).toBe(1500);
+    expect(out.quotas.Credits.total).toBe(3000);
+    expect(out.quotas.Credits.remainingPercentage).toBe(50);
+    expect(out.creditPeak).toBe(3000);
+
+    // The dashboard row keeps the percentage and the unit, so QuotaTable draws a bar.
+    const [row] = parseQuotaData("minimax-code", out);
+    expect(row.name).toBe("Credits");
+    expect(row.remainingPercentage).toBe(50);
+    expect(row.unit).toBe("credits");
+    expect(row.isCreditBalance).toBeFalsy();
   });
 
   it("reports a refused sign-in as an auth-expired message (route retries once)", async () => {

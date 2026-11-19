@@ -197,6 +197,16 @@ export async function GET(request, { params }) {
       }
     }
 
+    // MiniMax Code ships only the remaining credit balance: remember the peak so
+    // the quota card can render a used-percentage bar (minimaxCodeUsage.js).
+    const creditPeak = Number(usage?.creditPeak);
+    const seenPeak = Number(connection.providerSpecificData?.minimaxCreditPeak);
+    if (Number.isFinite(creditPeak) && creditPeak > 0 && (!Number.isFinite(seenPeak) || creditPeak > seenPeak)) {
+      await updateProviderConnection(connectionId, {
+        providerSpecificData: { ...(connection.providerSpecificData || {}), minimaxCreditPeak: creditPeak },
+      }).catch(() => {});
+    }
+
     return Response.json(usage);
   } catch (error) {
     const provider = connection?.provider ?? "unknown";

@@ -328,6 +328,39 @@ export default function ProfilePage() {
     }
   };
 
+  const updateRequestPaceEnabled = async (enabled) => {
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestPaceEnabled: enabled }),
+      });
+      if (res.ok) {
+        setSettings(prev => ({ ...prev, requestPaceEnabled: enabled }));
+      }
+    } catch (err) {
+      console.error("Failed to update request pacing:", err);
+    }
+  };
+
+  const updateRequestPaceSeconds = async (value) => {
+    const seconds = parseInt(value, 10);
+    if (isNaN(seconds) || seconds < 1) return;
+
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestPaceSeconds: seconds }),
+      });
+      if (res.ok) {
+        setSettings(prev => ({ ...prev, requestPaceSeconds: seconds }));
+      }
+    } catch (err) {
+      console.error("Failed to update request pacing interval:", err);
+    }
+  };
+
   const updateRequireLogin = async (requireLogin) => {
     try {
       const res = await fetch("/api/settings", {
@@ -1530,6 +1563,41 @@ export default function ProfilePage() {
                   max="100"
                   value={settings.comboStickyRoundRobinLimit || 1}
                   onChange={(e) => updateComboStickyLimit(e.target.value)}
+                  disabled={loading}
+                  className="w-20 text-center"
+                />
+              </div>
+            )}
+
+            {/* Global request pacing */}
+            <div className="flex items-start sm:items-center justify-between gap-4 pt-4 border-t border-border/50">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm sm:text-base">Request Rate Limit</p>
+                <p className="text-xs sm:text-sm text-text-muted">
+                  Queue model requests globally — only one starts per interval
+                </p>
+              </div>
+              <Toggle
+                checked={settings.requestPaceEnabled === true}
+                onChange={() => updateRequestPaceEnabled(!(settings.requestPaceEnabled === true))}
+                disabled={loading}
+              />
+            </div>
+
+            {settings.requestPaceEnabled === true && (
+              <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                <div>
+                  <p className="font-medium">Interval (seconds)</p>
+                  <p className="text-sm text-text-muted">
+                    Minimum spacing between two model requests
+                  </p>
+                </div>
+                <Input
+                  type="number"
+                  min="1"
+                  max="600"
+                  value={settings.requestPaceSeconds || 3}
+                  onChange={(e) => updateRequestPaceSeconds(e.target.value)}
                   disabled={loading}
                   className="w-20 text-center"
                 />

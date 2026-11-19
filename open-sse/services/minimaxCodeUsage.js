@@ -227,13 +227,24 @@ export async function getMiniMaxCodeUsage(connection) {
     const m = await getMiniMaxCodeMembership(site, access, userID);
 
     const quotas = {};
+    let creditPeak = 0;
     if (m.balance !== undefined) {
-      const n = Number(m.balance);
+      // Upstream reports only what is LEFT (op_credit_summary carries no grant
+      // total and no credit-usage endpoint exists), so the denominator is the
+      // highest balance this router has seen for the account, persisted on the
+      // connection by the usage route. That turns the balance into a used-% bar.
+      // ponytail: first read shows 0% used and a top-up raises the peak. Upgrade
+      // path: a real grant/used endpoint, if MiniMax ever ships one.
+      const remaining = Number(m.balance);
+      const left = Number.isFinite(remaining) && remaining >= 0 ? remaining : 0;
+      const seen = Number(connection.providerSpecificData?.minimaxCreditPeak);
+      creditPeak = Math.max(Number.isFinite(seen) && seen > 0 ? seen : 0, left);
       quotas["Credits"] = {
-        used: 0,
-        total: Number.isFinite(n) ? n : 0,
-        isCreditBalance: true,
-        currency: "credits",
+        used: Math.max(0, creditPeak - left),
+        total: creditPeak,
+        remainingPercentage: creditPeak > 0 ? (left / creditPeak) * 100 : 0,
+        unit: "credits",
+        resetAt: null,
       };
     }
     if (m.hasTokenPlan && m.opGroupId) {
@@ -251,6 +262,7 @@ export async function getMiniMaxCodeUsage(connection) {
 
     return {
       quotas,
+      ...(creditPeak > 0 ? { creditPeak } : {}),
       plan: m.hasTokenPlan ? (m.tier ? `M Plan ${m.tier}` : "M Plan") : "Free",
       ...(m.expiresAt > 0 ? { planExpiresAt: new Date(m.expiresAt < 1e12 ? m.expiresAt * 1000 : m.expiresAt).toISOString() } : {}),
       user: who?.email || who?.name || str(connection.providerSpecificData || {}, "realUserID") || userID || null,

@@ -14,7 +14,9 @@ export const STICKY_SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
  * In-memory session stickiness store for smart-routed combos.
  * Key: `${comboName}:${sessionId}` -> Value: { model, lastUsed }
  */
-const comboSessionModelStore = new Map();
+// globalThis-anchored for the same reason as combo.js: a second copy of this
+// module (dev HMR / another route bundle) must not own a second sticky store.
+const comboSessionModelStore = (globalThis.__9rComboSessions ??= new Map());
 
 /**
  * Extract prompt text from the request body for System One classification.

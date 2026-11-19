@@ -17,6 +17,10 @@ const DEFAULT_SETTINGS = {
   comboStrategy: "fallback",
   comboStickyRoundRobinLimit: 1,
   comboStrategies: {},
+  // Global model-request pacing (全局请求速率限制): queue requests so at most one
+  // model request starts every requestPaceSeconds. On by default.
+  requestPaceEnabled: true,
+  requestPaceSeconds: 3,
   capacityAdapter: {
     vision: { enabled: true, roundRobin: false, models: [] },
     pdf: { enabled: false, roundRobin: false, models: [] },
@@ -87,6 +91,18 @@ export function normalizeObservabilityMaxJsonSize(value) {
   return Math.min(Math.max(Math.round(n), 1), OBSERVABILITY_MAX_JSON_SIZE_KB_LIMIT);
 }
 
+// Upper bound for the pacing interval: a typo must not park every request for
+// hours. Non-numeric → default.
+const REQUEST_PACE_SECONDS_LIMIT = 600;
+
+export function normalizeRequestPaceSeconds(value) {
+  const n = Number(value);
+  if (value === undefined || value === null || value === "" || !Number.isFinite(n)) {
+    return DEFAULT_SETTINGS.requestPaceSeconds;
+  }
+  return Math.min(Math.max(Math.round(n), 1), REQUEST_PACE_SECONDS_LIMIT);
+}
+
 async function readRaw() {
   const db = await getAdapter();
   const row = db.get(`SELECT data FROM settings WHERE id = 1`);
@@ -120,6 +136,7 @@ export function mergeWithDefaults(raw) {
     }
   }
   merged.observabilityMaxJsonSize = normalizeObservabilityMaxJsonSize(merged.observabilityMaxJsonSize);
+  merged.requestPaceSeconds = normalizeRequestPaceSeconds(merged.requestPaceSeconds);
   return merged;
 }
 

@@ -19,7 +19,10 @@ import {
  * Per-model cooldown store for combo fallback.
  * Key: `${comboName}:${modelStr}` -> Value: unavailableUntil (ISO timestamp)
  */
-const comboModelCooldownStore = new Map();
+// Combo state lives on globalThis, not in module scope: Next can instantiate this
+// module more than once (dev HMR, a route bundle that carries its own copy), and
+// then the dashboard's Reset All clears a different Map than the chat lane reads.
+const comboModelCooldownStore = (globalThis.__9rComboCooldowns ??= new Map());
 
 const DEFAULT_MODEL_COOLDOWN_MS = 60 * 1000; // 60 seconds default
 
@@ -165,7 +168,7 @@ export function reorderByCapabilities(models, required) {
  * Track rotation state per combo (for round-robin strategy)
  * @type {Map<string, { index: number, consecutiveUseCount: number }>}
  */
-const comboRotationState = new Map();
+const comboRotationState = (globalThis.__9rComboRotation ??= new Map());
 
 /**
  * Track last successful model per combo (for fallback strategy)
@@ -177,7 +180,7 @@ const comboRotationState = new Map();
  * first request after midnight starts again from the combo's own order.
  * @type {Map<string, { model: string, day: string }>}
  */
-const comboFallbackIndex = new Map();
+const comboFallbackIndex = (globalThis.__9rComboFallback ??= new Map());
 
 const dayKey = () => new Date().toDateString();
 
@@ -353,10 +356,16 @@ export function resetComboRotation(comboName) {
     comboRotationState.delete(comboName);
     comboFallbackIndex.delete(comboName);
     clearStickyComboSession(comboName);
+    for (const key of comboModelCooldownStore.keys()) {
+      if (key.startsWith(`${comboName}:`)) comboModelCooldownStore.delete(key);
+    }
   } else {
     comboRotationState.clear();
     comboFallbackIndex.clear();
     clearStickyComboSession();
+    // A parked member is skipped before the order is even walked, so leaving
+    // cooldowns behind makes "start at the first model again" visibly false.
+    comboModelCooldownStore.clear();
   }
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
+import { PROVIDER_ID_TO_ALIAS, PROVIDER_MODELS } from "open-sse/config/providerModels.js";
 
 describe("getCapabilitiesForModel", () => {
 
@@ -319,6 +320,30 @@ describe("OpenCode Free ids newer than the capability tables", () => {
     // Vision and reasoning should still be reported correctly.
     expect(caps.vision).toBe(true);
     expect(caps.reasoning).toBe(true);
+  });
+
+  it("badges every OpenCode Free v2 model with reasoning and upstream vision", () => {
+    const alias = PROVIDER_ID_TO_ALIAS["opencode-free-v2"];
+    const visionIds = new Set([
+      "mimo-v2.6-flash-free",
+      "nemotron-3.5-super-vl-free",
+      "inkling-2-small-free",
+      "deepseek-v4.1-flash-free",
+      "crouton-alpha-free",
+      "glm-5.3-flash-free",
+    ]);
+    for (const { id } of PROVIDER_MODELS[alias]) {
+      for (const provider of ["opencode-free-v2", alias]) {
+        const caps = getCapabilitiesForModel(provider, id);
+        expect(caps.reasoning, `${provider}/${id} reasoning`).toBe(true);
+        expect(caps.vision, `${provider}/${id} vision`).toBe(visionIds.has(id));
+      }
+    }
+    // per-id limits from models.opencode.ai/api.json, not the 200k floor
+    expect(getCapabilitiesForModel(alias, "beam-free")).toMatchObject({
+      contextWindow: 1048576,
+      maxOutput: 131072,
+    });
   });
 
   it("keeps per-id modalities and limits instead of a generic floor", () => {
