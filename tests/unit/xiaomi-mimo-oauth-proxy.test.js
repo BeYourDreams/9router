@@ -3,7 +3,7 @@
  * once the callback listener is down.
  *
  * Each /authorize registers a session holding an X25519 private key, keyed by a
- * fresh state. Unlike trae/windsurf/zed (singleton session) this is a Map, so
+ * fresh state. Unlike windsurf/zed (singleton session) this is a Map, so
  * without an explicit clear every login attempt would leak a private key for
  * the whole process lifetime.
  */

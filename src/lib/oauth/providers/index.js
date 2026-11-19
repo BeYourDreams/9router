@@ -25,7 +25,6 @@ import gitlab from "./gitlab.js";
 import codebuddyCn from "./codebuddy-cn.js";
 import codebuddyIntl from "./codebuddy-intl.js";
 import kimchi from "./kimchi.js";
-import trae from "./trae.js";
 import windsurf from "./windsurf.js";
 import zed from "./zed.js";
 import glm from "./glm.js";
@@ -56,7 +55,6 @@ const PROVIDERS = {
   "codebuddy-cn": codebuddyCn,
   "codebuddy-intl": codebuddyIntl,
   kimchi,
-  trae,
   windsurf,
   zed,
   glm,
@@ -100,8 +98,7 @@ export async function generateAuthData(providerName, redirectUri, meta) {
     ? await provider.prepareConfig(provider.config, meta || {})
     : provider.config;
   const { codeVerifier: pkceVerifier, codeChallenge, state: pkceState } = generatePKCE(provider.pkceVerifierBytes);
-  // Trae uses loginTraceID (set by prepareConfig) as the callback matcher, not PKCE state.
-  const state = config.loginTraceID || pkceState;
+  const state = pkceState;
   // Zed: codeVerifier carries the encoded RSA private key (from prepareConfig), not a PKCE verifier.
   const codeVerifier = config.privateKeyVerifier || pkceVerifier;
 

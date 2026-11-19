@@ -6,16 +6,8 @@ import os from "os";
 
 const execAsync = promisify(exec);
 
-// Install paths per provider per platform — Trae and standard Windsurf IDE locations.
+// Install paths per provider per platform — standard Windsurf IDE locations.
 const IDE_PATHS = {
-  trae: {
-    darwin: ["/Applications/Trae.app"],
-    win32: [
-      path.join(process.env.LOCALAPPDATA || "", "Programs", "Trae", "Trae.exe"),
-      path.join(process.env.ProgramFiles || "", "Trae", "Trae.exe"),
-    ],
-    linux: ["/usr/bin/trae", "/usr/local/bin/trae", "/opt/trae", "/opt/Trae"],
-  },
   windsurf: {
     darwin: ["/Applications/Windsurf.app"],
     win32: [
@@ -27,7 +19,6 @@ const IDE_PATHS = {
 };
 
 const IDE_BINARIES = {
-  trae: "trae",
   windsurf: "windsurf",
 };
 

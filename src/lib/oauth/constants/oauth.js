@@ -131,12 +131,6 @@ export const GROK_CLI_CONFIG = { ...PROVIDER_OAUTH["grok-cli"] };
 // (Meta rejects refresh_token grants; the minted Model API key never expires).
 export const MUSE_CONFIG = { ...PROVIDER_OAUTH["muse"] };
 
-// Trae (ByteDance marscode) OAuth — authorization_code flow with local callback.
-//   1) POST GetLoginGuidance {loginTraceID} → {Result.LoginHost}
-//   2) Browser opens ${loginHost}/authorization?client_id=...&login_trace_id=...&auth_callback_url=${cb}
-//   3) Redirect → ${cb}?refreshToken=...&loginHost=...&isRedirect=true
-//   4) POST ExchangeToken {ClientID, RefreshToken, ClientSecret:"-"} → {Result.AccessToken, ExpiresAt}
-//   5) POST GetUserInfo (x-cloudide-token) → email/name
 // Xiaomi MiMo Desktop OAuth — custom ECDH encrypted-callback flow (NOT standard OAuth2).
 //   1) Client generates X25519 keypair
 //   2) Browser opens ${platformUrl}/authorize?pk=<pubkey>&redirect_uri=http://localhost:<port>/&kn=mimocode&key_name=...
@@ -150,37 +144,6 @@ export const XIAOMI_MIMO_CONFIG = {
   kn: "mimocode",
   callbackPath: "/",
   timeoutMs: 300000, // 5 minutes
-};
-
-export const TRAE_CONFIG = {
-  clientId: "ono9krqynydwx5",
-  clientSecret: "-",
-  loginGuidanceUrls: [
-    "https://api.marscode.com/cloudide/api/v3/trae/GetLoginGuidance",
-    "https://api.trae.ai/cloudide/api/v3/trae/GetLoginGuidance",
-    "https://www.trae.ai/cloudide/api/v3/trae/GetLoginGuidance",
-  ],
-  apiOrigins: [
-    "https://api.marscode.com",
-    "https://api.trae.ai",
-    "https://www.trae.ai",
-    "https://www.marscode.com",
-  ],
-  exchangeTokenPath: "/cloudide/api/v3/trae/oauth/ExchangeToken",
-  getUserInfoPath: "/cloudide/api/v3/trae/GetUserInfo",
-  authorizationPath: "/authorization",
-  callbackPath: "/callback",
-  minAppVersion: "3.5.54",
-  defaultAppVersion: "3.5.54",
-  defaultAppType: "stable",
-  defaultPluginVersion: "local",
-  // service machine id is derived at runtime; device_id "0" is the stable default
-  defaultDeviceId: "0",
-  userAgent: "Trae/1.0.0 antigravity-cockpit-tools",
-  webUrl: "https://www.trae.ai",
-  authScheme: "Cloud-IDE-JWT",
-  tokenLifetimeDays: 14,
-  oauthTimeoutMs: 600_000,
 };
 
 // Windsurf / Devin CLI OAuth — authorization_code (implicit) flow with local callback.
@@ -261,7 +224,6 @@ export const PROVIDERS = {
   CODEBUDDY_INTL: "codebuddy-intl",
   KIMCHI: "kimchi",
   GROK_CLI: "grok-cli",
-  TRAE: "trae",
   WINDSURF: "windsurf",
   GLM: "glm",
   ZED: "zed",

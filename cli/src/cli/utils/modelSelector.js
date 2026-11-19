@@ -48,7 +48,6 @@ const PROVIDER_ID_TO_ALIAS = {
   "codebuddy-intl": "cbai",
   kimchi: "kimchi",
   "grok-cli": "grok-cli",
-  trae: "trae",
   windsurf: "windsurf",
   zed: "zed",
   opencode: "oc",

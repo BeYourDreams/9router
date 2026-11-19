@@ -7,19 +7,11 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 
 // Providers using the dynamic-port local callback proxy.
 // Browser OAuth: popup → auto callback → auto exchange → poll-status.
-const PROXY_OAUTH_PROVIDERS = new Set(["trae", "windsurf", "zed"]);
+const PROXY_OAUTH_PROVIDERS = new Set(["windsurf", "zed"]);
 
 // Providers offering a paste-token fallback (import-token flow).
 // UX warns if the IDE (which issues the token) is not installed.
 const PASTE_TOKEN_PROVIDERS = {
-  trae: {
-    label: "Cloud-IDE-JWT",
-    instructions:
-      "Sign in at trae.ai (or solo.trae.ai), open DevTools → Network, copy the Cloud-IDE-JWT token from any request's Authorization header (~14-day lifetime).",
-    placeholder: "Paste Cloud-IDE-JWT here...",
-    ideName: "Trae",
-    ideOptional: true, // token can be grabbed from DevTools without the IDE
-  },
   windsurf: {
     label: "Windsurf API key",
     instructions:
@@ -43,7 +35,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
   const [isDeviceCode, setIsDeviceCode] = useState(false);
   const [deviceData, setDeviceData] = useState(null);
   const [polling, setPolling] = useState(false);
-  // trae/windsurf: choose between browser OAuth (proxy) and paste-token (import)
+  // windsurf: choose between browser OAuth (proxy) and paste-token (import)
   const [authMode, setAuthMode] = useState("browser"); // "browser" | "paste-token"
   const [pasteToken, setPasteToken] = useState("");
   const [ideStatus, setIdeStatus] = useState(null);
@@ -205,7 +197,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
     }
   }, []);
 
-  // Trae/Windsurf/Zed proxy OAuth flow: dynamic-port local callback → auto exchange.
+  // Windsurf/Zed proxy OAuth flow: dynamic-port local callback → auto exchange.
   const startProxyFlow = useCallback(async (providerId) => {
     // 1. Start the local callback server (returns a dynamic port + callback URL).
     const startRes = await fetch(`/api/oauth/${providerId}/start-proxy`);
@@ -272,7 +264,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
     try {
       setError(null);
 
-      // Trae/Windsurf: proxy OAuth (browser mode) — handled by dedicated flow.
+      // Windsurf: proxy OAuth (browser mode) — handled by dedicated flow.
       // Paste-token mode is handled by handleManualSubmit (no /authorize call).
       if (PROXY_OAUTH_PROVIDERS.has(provider) && authMode === "browser") {
         await startProxyFlow(provider);
@@ -500,7 +492,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
     setIdeStatus(null);
     pollingAbortRef.current = false;
     flowRef.current = { proxyStarted: false, proxyProvider: null, stopSent: false };
-    // Best-effort IDE detection for paste-token providers (Trae/Windsurf)
+    // Best-effort IDE detection for paste-token providers (Windsurf)
     if (PASTE_TOKEN_PROVIDERS[provider]) {
       fetch(`/api/oauth/${provider}/ide-status`)
         .then((r) => r.json())
@@ -522,7 +514,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
     flowRef.current = { proxyStarted: false, proxyProvider: null, stopSent: false };
   }, [isOpen, provider, stopOwnedProxy]);
 
-  // Server-side proxy mode (codex/xai fixed-port + trae/windsurf dynamic-port):
+  // Server-side proxy mode (codex/xai fixed-port + windsurf dynamic-port):
   // poll status until the proxy auto-exchanges and saves the connection.
   useEffect(() => {
     const pollProvider = authData?.codexServerSide
@@ -659,7 +651,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
     try {
       setError(null);
 
-      // Paste-token mode (Trae/Windsurf): token goes straight to /exchange
+      // Paste-token mode (Windsurf): token goes straight to /exchange
       if (authMode === "paste-token" && PASTE_TOKEN_PROVIDERS[provider]) {
         const token = pasteToken.trim();
         if (!token) throw new Error("Missing token");
@@ -677,7 +669,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
 
       const input = callbackUrl.trim();
 
-      // Trae/Windsurf/Zed proxy flow fallback (popup blocked): paste the full callback URL
+      // Windsurf/Zed proxy flow fallback (popup blocked): paste the full callback URL
       if (PROXY_OAUTH_PROVIDERS.has(provider) && input) {
         const res = await fetch(`/api/oauth/${provider}/exchange`, {
           method: "POST",
@@ -764,7 +756,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
   return (
     <Modal isOpen={isOpen} title={modalTitle} onClose={handleClose} size="lg">
       <div className="flex flex-col gap-4">
-        {/* Proxy OAuth (trae/windsurf/zed): browser flow; paste-token only when configured */}
+        {/* Proxy OAuth (windsurf/zed): browser flow; paste-token only when configured */}
         {PROXY_OAUTH_PROVIDERS.has(provider) && (step === "waiting" || step === "input" || step === "error") && (
           <>
             {PASTE_TOKEN_PROVIDERS[provider] && (

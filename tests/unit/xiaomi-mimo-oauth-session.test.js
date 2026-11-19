@@ -50,9 +50,7 @@ vi.mock("@/lib/oauth/utils/server", () => {
     getCodexSessionStatus: () => null, clearCodexSession: noop,
     startXaiProxy: notUsed, stopXaiProxy: noop, registerXaiSession: noop,
     getXaiSessionStatus: () => null, clearXaiSession: noop,
-    startTraeProxy: notUsed, stopTraeProxy: noop, registerTraeSession: noop,
-    getTraeSessionStatus: () => null, clearTraeSession: noop,
-    startWindsurfProxy: notUsed, stopWindsurfProxy: noop, registerWindsurfSession: noop,
+
     getWindsurfSessionStatus: () => null, clearWindsurfSession: noop,
     startZedProxy: notUsed, stopZedProxy: noop, registerZedSession: noop,
     getZedSessionStatus: () => null, clearZedSession: noop,
