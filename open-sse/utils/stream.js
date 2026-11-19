@@ -180,7 +180,12 @@ export function createSSEStream(options = {}) {
           let responsesTerminal = false;
 
           // Upstream already sent the sentinel; flush() must not append a second one.
-          if (trimmed.startsWith("data:") && trimmed.slice(5).trim() === "[DONE]") streamDoneSent = true;
+          if (trimmed.startsWith("data:") && trimmed.slice(5).trim() === "[DONE]") {
+            streamDoneSent = true;
+            // A client can cancel right after the terminal event, so flush() never
+            // runs. Finalize here — the usage trailer (when any) precedes [DONE].
+            finalizeStream();
+          }
 
           if (trimmed.startsWith("data:") && trimmed.slice(5).trim() !== "[DONE]") {
             try {
@@ -255,6 +260,13 @@ export function createSSEStream(options = {}) {
                 }
               }
 
+              // Usage can arrive in a chunk with no valuable delta (or an empty
+              // one); read it before the content filter, as translate mode does.
+              const extracted = extractUsage(parsed);
+              if (extracted) {
+                usage = mergeUsage(usage, extracted);
+              }
+
               if (!hasValuableContent(parsed, FORMATS.OPENAI)) {
                 continue;
               }
@@ -271,19 +283,15 @@ export function createSSEStream(options = {}) {
                 accumulatedThinking += reasoning;
               }
 
-              const extracted = extractUsage(parsed);
-              if (extracted) {
-                usage = mergeUsage(usage, extracted);
-              }
-
               responsesTerminal = isOpenAIResponsesTerminalEvent(currentOpenAIResponsesEvent, parsed);
 
               const isFinishChunk = parsed.choices?.[0]?.finish_reason;
-              if (isFinishChunk && !hasValidUsage(parsed.usage)) {
+              if (isFinishChunk && !hasValidUsage(usage)) {
                 const estimated = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
                 parsed.usage = filterUsageForFormat(estimated, FORMATS.OPENAI);
                 output = `data: ${JSON.stringify(parsed)}\n`;
-                usage = estimated;
+                // Client-facing estimate only. A usage trailer may still arrive;
+                // storing it here would poison the stats with body-size tokens.
                 injectedUsage = true;
               } else if (isFinishChunk && usage) {
                 const buffered = addBufferToUsage(usage);
@@ -361,6 +369,7 @@ export function createSSEStream(options = {}) {
           }
           streamDoneSent = true;
           if (keepsOpenAIResponsesFormat) openAIResponsesDoneSent = true;
+          finalizeStream();
           continue;
         }
 
@@ -440,10 +449,11 @@ export function createSSEStream(options = {}) {
 
             // Inject estimated usage if finish chunk has no valid usage
             const isFinishChunk = item.type === "message_delta" || item.choices?.[0]?.finish_reason;
-            if (state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
+            if (state.finishReason && isFinishChunk && !hasValidUsage(state.usage) && totalContentLength > 0) {
               const estimated = estimateUsage(body, totalContentLength, sourceFormat);
               item.usage = filterUsageForFormat(estimated, sourceFormat); // Filter + already has buffer
-              state.usage = estimated;
+              // Client-facing estimate only; a real trailer may still arrive and
+              // must not be max-merged against body-size tokens.
             } else if (state.finishReason && isFinishChunk && state.usage) {
               // Add buffer and filter usage for client (but keep original in state.usage for logging)
               const buffered = addBufferToUsage(state.usage);
