@@ -9,9 +9,6 @@ export default {
     icon: "terminal",
     color: "#E87040",
     textIcon: "OC",
-    notice: {
-      text: "若客户端提示词强制走 codemode/bash 但未启用 bash，调用会失败（勿假装执行/循环重试）；请改用可用工具（read/write/edit/grep 等）或放宽提示词。",
-    },
   },
   category: "free",
   noAuth: true,
