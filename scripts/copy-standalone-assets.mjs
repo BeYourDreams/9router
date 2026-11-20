@@ -39,6 +39,16 @@ export function copyStandaloneAssets({ projectRoot = process.cwd(), distDir = pr
     console.log(`[standalone-assets] Copied scripts/ to ${scriptsDestination}`);
   }
 
+  // serverExternalPackages keeps undici real, but dynamic import("undici") in
+  // open-sse/utils/proxyFetch.js is invisible to file tracing. Copy it once
+  // here instead of forcing ./node_modules/undici/**/* into every route's trace.
+  const undiciSource = resolve(projectRoot, "node_modules", "undici");
+  const undiciDestination = resolve(standaloneDir, "node_modules", "undici");
+  if (existsSync(undiciSource)) {
+    cpSync(undiciSource, undiciDestination, { recursive: true, force: true });
+    console.log(`[standalone-assets] Copied undici to ${undiciDestination}`);
+  }
+
   // Without it beside server.js the standalone build serves requests unsanitized.
   const serverWrapperSource = resolve(projectRoot, "custom-server.js");
   const serverWrapperDestination = resolve(standaloneDir, "custom-server.js");
