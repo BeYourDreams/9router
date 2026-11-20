@@ -37,7 +37,7 @@ const MCODE_LEASE_PROVIDERS = new Set(["minimax-code", "minimax-code-global"]);
 // Providers whose registry list is only an offline fallback: the dashboard
 // renders the live per-connection catalog from GET /api/providers/[id]/models
 // when one resolves, and falls back to the static rows otherwise.
-const LIVE_MODEL_CATALOG_PROVIDERS = new Set(["cursor", "zed", "claude", "commandcode"]);
+const LIVE_MODEL_CATALOG_PROVIDERS = new Set(["cursor", "zed", "claude", "commandcode", "codebuddy-cn"]);
 
 const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
@@ -1438,7 +1438,12 @@ export default function ProviderDetailPage() {
                   title="Restore model"
                 >
                   <span className="material-symbols-outlined text-[13px]">add</span>
-                  {m.id}
+                  <span className="flex flex-col items-start leading-tight">
+                    {m.id}
+                    {m.name && m.name !== m.id && (
+                      <span className="text-[10px] italic opacity-70">{m.name}</span>
+                    )}
+                  </span>
                 </button>
               ))}
             </div>

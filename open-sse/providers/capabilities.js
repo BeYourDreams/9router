@@ -413,6 +413,12 @@ export const PROVIDER_CAPABILITIES = {
     // snapshot raised maxOutput to 393216 (matching v4-pro) and changed the
     // published efforts from low/high/xhigh to low/high/max.
     "deepseek-v4.1-flash": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 393216 },
+    // 2026-11-20 catalog refresh — new CLI ids, from the same live payload.
+    // contextWindow = contextWindow.defaultLength (1M needs an explicit opt-in).
+    "auto":           { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 256000, maxOutput: 32000 },
+    "hy4std":         { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 300000, maxOutput: 64000 },
+    "hy4flash-free":  { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 300000, maxOutput: 64000 },
+    "hy4flash":       { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 300000, maxOutput: 64000 },
   },
   // Poolside Laguna — OpenAI-compatible, all reasoning-capable (32K max output).
   "poolside": {

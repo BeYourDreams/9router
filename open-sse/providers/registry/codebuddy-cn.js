@@ -47,31 +47,27 @@ export default {
       url: "https://copilot.tencent.com/v2/billing/meter/get-user-resource",
     },
   },
+  // Offline fallback for the CLI agent's live catalog. The resolver in
+  // services/codebuddyModels.js keeps this current; the 2026-11-20 snapshot
+  // below is what /console/enterprises/personal/models publishes. Names carry
+  // the upstream credits multiplier, like the official client.
   models: [
-    { id: "glm-5.2", name: "GLM-5.2" },
-    { id: "glm-5.1", name: "GLM-5.1" },
-    { id: "minimax-m3", name: "MiniMax-M3" },
-    // Catalog mirrors the server's product-config payload (the plugin fetches
-    // it from copilot.tencent.com). Models the server no longer publishes are
-    // removed even when the chat endpoint still answers them — the published
-    // list is the contract. Drop log: glm-5.0 / glm-4.7 and hy4-preview-x
-    // (endpoint returns 11102 "model service info not found"), plus
-    // glm-5.0-turbo / minimax-m2.7 / kimi-k2.5 / hy3-preview /
-    // deepseek-v3-2-volc (absent from the server list, though still answering
-    // 200), glm-5v-turbo / kimi-k2.7 / kimi-k2.6 (absent from the server list
-    // since the 2026-09-30 snapshot, replaced by kimi-k2.8-preview), and
-    // deepseek-v4-flash (replaced server-side by deepseek-v4.1-flash, then
-    // re-listed briefly — kept out; endpoint still answers 200 but the list
-    // is the contract). hy3-x is the paid tier of hy3 and stays excluded.
-    // "-x" suffix = paid tier of the same model (free id rides the promo quota).
-    { id: "hy3", name: "Hy3" },
-    { id: "hy4-preview", name: "Hy4-Preview" },
-    { id: "glm-5.3", name: "GLM-5.3" },
-    { id: "glm-5.3-flash", name: "GLM-5.3-Flash" },
-    { id: "kimi-k3-1", name: "Kimi-K3" },
-    { id: "kimi-k2.8-preview", name: "Kimi-K2.8-Preview" },
-    { id: "deepseek-v4-pro", name: "DeepSeek-V4-Pro" },
-    { id: "deepseek-v4.1-flash", name: "DeepSeek-V4.1-Flash" },
+    { id: "auto", name: "Auto" },
+    { id: "hy4std", name: "Hy4 (x0.29 credits)" },
+    { id: "hy4flash-free", name: "Hy4 flash (x0.00)" },
+    { id: "hy4flash", name: "Hy4 flash (x0.03)" },
+    { id: "deepseek-v4.1-flash", name: "DeepSeek-V4.1-Flash (x0.11 credits)" },
+    { id: "glm-5.3", name: "GLM-5.3 (x0.69)" },
+    { id: "glm-5.3-flash", name: "GLM-5.3-Flash (x0.08)" },
+    { id: "glm-5.2", name: "GLM-5.2 (x0.79 credits)" },
+    { id: "kimi-k3.1-pro", name: "Kimi-K3.1-Pro (x0.97 credits)" },
+    { id: "kimi-k3-1", name: "Kimi-K3 (x1.62 credits)" },
+    { id: "kimi-k2.8-preview", name: "Kimi-K2.8-Preview (x0.77 credits)" },
+    { id: "space-bunny", name: "Space-Bunny (x0.08 credits)" },
+    { id: "minimax-m3.1-flash", name: "MiniMax-M3.1-Flash (x0.08 credits)" },
+    { id: "deepseek-v4-pro", name: "DeepSeek-V4-Pro (x0.51 credits)" },
+    { id: "step-5-preview", name: "Step-5-Preview (x0.33 credits)" },
+    { id: "mimo-v2.6-pro", name: "Xiaomi MiMo-V2.6-Pro (x0.13 credits)" },
   ],
   oauth: {
     baseUrl: "https://copilot.tencent.com",

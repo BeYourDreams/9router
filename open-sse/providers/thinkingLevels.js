@@ -88,7 +88,9 @@ const PATTERN_THINKING = [
   { provider: "codebuddy-cn", pattern: "kimi-k2.8-preview",  levels: ["low", "medium", "high"] },
   { provider: "codebuddy-cn", pattern: "hy3",          levels: ["low", "high"] },
   { provider: "codebuddy-cn", pattern: "hy4-preview",  levels: ["high"] },
-  // codebuddy-intl rides the same gateway catalog, so its deepseek levels match.
+  { provider: "codebuddy-cn", pattern: "hy4std",        levels: ["high"] },
+  { provider: "codebuddy-cn", pattern: "hy4flash*",     levels: ["high"] },
+
   { provider: "codebuddy-intl", pattern: "deepseek-v4*", levels: ["low", "high", "xhigh"] },
   // MiniMax Code (mcode) — adaptive effort via output_config.effort. M3.1
   // always thinks (no none); M3 is switchable with none/high only, per the

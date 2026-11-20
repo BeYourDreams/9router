@@ -11,6 +11,7 @@ import { getProviderConnections, getCombos, getCustomModels, getModelAliases } f
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { getKeyAccessContext, filterModelsListForKey } from "@/sse/services/keyAccess.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
+import { resolveCodeBuddyCnModels } from "open-sse/services/codebuddyModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels, routableQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
@@ -72,6 +73,20 @@ const LIVE_MODEL_RESOLVERS = {
       providerSpecificData: conn.providerSpecificData || {}
     }, { log: console });
     return result?.models?.length ? { models: result.models } : null;
+  },
+  "codebuddy-cn": async (conn) => {
+    const result = await resolveCodeBuddyCnModels(conn, {
+      onCredentialsRefreshed: async (refreshed) => {
+        await updateProviderCredentials(conn.id, {
+          accessToken: refreshed.accessToken,
+          refreshToken: refreshed.refreshToken || conn.refreshToken,
+          expiresIn: refreshed.expiresIn,
+        });
+        conn.accessToken = refreshed.accessToken;
+        if (refreshed.refreshToken) conn.refreshToken = refreshed.refreshToken;
+      },
+    });
+    return result.models.length ? result : null;
   },
   qoder: async (conn) => resolveQoderLiveModels(conn, "qoder"),
   "qoder-cn": async (conn) => resolveQoderLiveModels(conn, "qoder-cn"),

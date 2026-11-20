@@ -16,6 +16,7 @@ import { resolveClineModels, resolveClinepassModels, resolveClineFreeModels } fr
 import { NOUS_MODELS_URL, normalizeNousModels } from "open-sse/services/nous.js";
 import { resolveCommandCodeModels } from "open-sse/services/commandcodeModels.js";
 import codexProvider from "open-sse/providers/registry/codex.js";
+import { resolveCodeBuddyCnModels } from "open-sse/services/codebuddyModels.js";
 
 const GEMINI_CLI_MODELS_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
 
@@ -289,6 +290,24 @@ const PROVIDER_MODELS_CONFIG = {
         models: getStaticProviderModels("commandcode"),
         warning: "CommandCode returned no live models; falling back to static catalog.",
       };
+    },
+  },
+  "codebuddy-cn": {
+    customResolver: async (connection) => {
+      const result = await resolveCodeBuddyCnModels(connection, {
+        onCredentialsRefreshed: async (refreshed) => {
+          await updateProviderCredentials(connection.id, {
+            accessToken: refreshed.accessToken,
+            refreshToken: refreshed.refreshToken || connection.refreshToken,
+            expiresIn: refreshed.expiresIn,
+          });
+          connection.accessToken = refreshed.accessToken;
+          if (refreshed.refreshToken) connection.refreshToken = refreshed.refreshToken;
+        },
+      });
+      return result.models.length
+        ? result
+        : { models: getStaticProviderModels("codebuddy-cn"), warning: result.warning };
     },
   },
   anthropic: {
